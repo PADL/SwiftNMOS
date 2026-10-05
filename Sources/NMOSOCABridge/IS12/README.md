@@ -1,0 +1,151 @@
+# IS-12: AES70 classes as MS-05-02 classes
+
+How the bridge presents an AES70 object is derived from the object's own declarations at
+run time; `NMOSOcaControlMapping` holds only what cannot be derived (which AES70 classes
+stand for which standard classes, and which of their properties serve the standard ones).
+This note records the rules the derivation follows, and the decisions behind them.
+
+## Classes and levels
+
+An object is presented under the deepest *anchor* in its AES70 lineage: an AES70 class with
+a standard counterpart (OcaRoot/NcObject, OcaWorker/NcWorker, OcaBlock/NcBlock,
+OcaIdentificationActuator/NcIdentBeacon, OcaManager/NcManager,
+OcaDeviceManager/NcDeviceManager).
+Every AES70 class below OcaRoot becomes a non-standard class whose ID is the anchor's,
+then an authority key, then the AES70 class ID's fields after the leading 1 (an AES70
+proprietary marker and its authority collapse into that authority's key).
+
+An AES70 element defined at AES70 level **L** is presented at level **N + L − 1**, where
+**N** is the anchor's level, with its AES70 index unchanged. This is the same thing as
+MS-05-02's own rule, the level of the defining class counted without authority keys,
+applied to the class IDs above. It holds for properties and methods alike.
+
+## The one exception: OcaRoot
+
+OcaRoot's elements are not presented (`NMOSOcaControlClasses.presented`). NcObject owns
+level 1: OcaRoot's properties are NcObject's (class ID and role; the lock state has no
+counterpart), and OcaRoot's seven methods, 1.1 to 1.7, would take the IDs of NcObject's
+`Get`, `Set` and the sequence methods under an NcObject anchor, or of the anchor's own
+methods under a deeper one (NcBlock's `GetMemberDescriptors` to `FindMembersByClassId`),
+since level 1 maps to the anchor's level. The lock methods stay hidden: IS-12 has no lock,
+and a session must not be able to lock objects against AES70 controllers.
+
+## Standard methods take precedence by structure
+
+`NcObjectModel` answers every standard method itself before asking the source: NcObject's
+`1m1`–`1m7` for every object, NcBlock's `2m1`–`2m4` for a block, NcClassManager's for its
+oid. With OcaRoot excluded, every presented AES70 class has L ≥ 2 and so every AES70
+method lands at level N + 1 or below, under every standard class in the lineage; no
+renumbering is needed, and no method is excluded by name or by class. Checked over every
+method table in SwiftOCADevice and in one vendor device: the only collisions are OcaRoot's, and
+they fall inside the exception; a non-block class that
+defines `{2, 4}` or `{3, 1}` shares numerals with NcBlock or NcClassManager in an unrelated
+class, which MS-05-02 allows (NcReceiverMonitor and NcSenderMonitor both define `4m1`).
+
+## Methods
+
+Each presented AES70 class lists the methods SwiftOCADevice declares for it with
+`@OcaDeviceMethod` (`OcaDeviceClassDescriptor.methods`), at the level and index the rule
+above gives (`NMOSOcaControlClasses.presentMethods`). Where a class declares a method ID
+more than once the most derived declaration is the one presented. A method is described by
+its model name; its parameters by their OCP.2 names and schemas, as properties are; and its
+result by a struct derived from `NcMethodResult`, named for the class and the method
+(`OcaWorkerGetPortNameResult`), whose one field is `value` for a method with one result, or
+a field per result under its OCP.2 name for several. A method with no results returns
+`NcMethodResult` itself. `isDeprecated` is false, as SwiftOCA has nothing to say otherwise.
+A class that adds only methods to its anchor is a class of its own, as one that adds a
+property is (`NMOSOcaControlClasses.isClassOfItsOwn`). A debug assertion checks that no
+presented method takes the ID of a standard method of the anchor's lineage.
+
+A method is left out, and the reason logged at trace level, when:
+
+- its ID is the getter or setter of one of the class's properties (`Get`/`Set` serve it);
+- it does not describe its parameters (`isDescribed` is false, as for `SetResetKey`);
+- a parameter or result has a type MS-05-02 cannot describe, as for a property.
+
+A method the device refuses to a controller is still presented: the device's
+`PermissionDenied` is the session's `Unauthorized` when it is called, as over OCP.1 and
+OCP.2.
+
+`NMOSOcaObjectSource.invoke` serves a presented method from the class's `methods`, keyed by
+the mapped `NcElementID`. Each IS-12 argument is looked up by its OCP.2 name (a missing one
+is `ParameterError`) and converted by its schema, and the command goes to the device as the
+session's own OCP.2 controller, so the device's method table decodes it and makes the lock
+and access checks; the bridge decodes nothing itself. The OCA status maps to an
+`NcMethodStatus` (`NotImplemented` to `MethodNotImplemented`, `PermissionDenied` to
+`Unauthorized`, `Locked` to `Locked`), and the results are converted back by their schemas.
+
+A vendor's classes may declare their own methods with `@OcaDeviceMethod` too, so they may
+be invoked by the same rules, under the vendor's authority key, as they may over OCP.1
+and OCP.2. They are not described, though, unless the package is built with the
+`DescribeVendorMethods` trait (`NMOSOcaControlClasses.describesMethods`); a vendor
+class's properties are described either way. Which of a class's methods are candidates is
+decided in one place, `NMOSOcaControlClasses.candidates`. Swift classes that share an OCA
+class ID are one class to IS-12: a setter any of them refuses to the network makes the
+property read only for the class.
+
+Decisions:
+
+- Property accessors are not methods: a table method whose ID is the getter or setter of
+  an `@OcaDeviceProperty` is served by the property (`Get`/`Set`). A getter the device
+  declares only as a method, such as OcaLevelSensor's `GetReading`, is a method.
+- `OcaONo`-typed parameters and results are presented as the raw AES70 object numbers,
+  as `OcaONo` properties already are; an oid differs only for the root block and the
+  device manager.
+- A method whose parameters the device cannot describe (OcaDeviceManager's raw
+  `SetResetKey`) cannot be presented honestly, and is left out, as its descriptor says.
+
+## Notifications
+
+Every presented property is notified when it changes, metering and counters included: a
+generic sensor's `reading`, PADL's `clip`, and the counter sets of a network application,
+a network interface, a media transport application's `endpointCounterSets` and a counter
+set agent. They may also be read, or polled: `GetReading` and `GetEndpointCounter` are
+methods like any other.
+
+OcaLevelSensor's reading is not a property at all: SwiftOCA keeps it privately and sends
+its own change events for 4.1, which no presented property has, so a client reads it with
+`GetReading`. Events other than property changes are never forwarded, so a counter
+notifier's are not.
+
+A session subscribed to an object has its controller subscribed to each of the object's
+presented properties (`AddPropertyChangeSubscription2`, in effect) rather than to all of
+its property changes. The device then does not encode, or send the bridge, a change to
+anything not presented. With no session
+subscribed to an object, the bridge hears nothing from it, unless it is a block or the
+device manager, whose changes to the tree the bridge observes for itself. Counter agents
+and counter notifiers are presented like any agent: what they hold may be read, which
+leaves nothing of them hollow.
+
+What a session's controller takes from a notification is only which object and property
+changed: the event, and the property ID read from its event data without decoding the
+value (`OcaEventDataCoding.propertyID(from:)`). The value is read afresh, as the session's
+own `Get` would read it, and sent as `NcPropertyChangedEventData`.
+
+## User labels
+
+MS-05-02 has every object's `userLabel` writable. Where the object has an OCA `label` a
+controller can set, the label is that property, written as the session's controller: a
+lock, or any other failure but the device's refusal to have it changed, is the session's
+error. An object without one (a manager, OcaRoot itself), or whose device refuses to
+change it, has the label kept by the bridge instead, over the OCA one; so is the class
+manager's, by `NcObjectModel`.
+
+Known limitation: the labels the bridge keeps are held in memory only, so they do not
+survive a restart, although MS-05-02 (`NcObject`) requires that user labels persist
+across reboots. Labels held in OCA properties persist as the device persists them.
+
+## Demo
+
+`scripts/nmos/is12demo.py` walks through a node's IS-12 endpoint with standard messages
+only: the tree, a block's user label, a channel's gain and mute, a notification, the device
+name, and AES70 methods presented by the bridge (`GetPath`, `GetPortName`, the errors
+they map to, and a vendor method called by ID, as it is not described). Against a node
+serving IS-12 on port 8116:
+
+    scripts/nmos/is12demo.py --url http://127.0.0.1:8116
+
+`scripts/nmos/nmosctl.py --url http://127.0.0.1:8116 ncp tree` draws the object tree, each
+object indented under its block with its class and oid, and `ncp describe OID` lists an
+object's properties with their values, and its methods. An oid may be given in decimal or
+in hex (`0x64`).

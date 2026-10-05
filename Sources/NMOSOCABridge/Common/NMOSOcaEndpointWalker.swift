@@ -1,0 +1,187 @@
+//
+// Copyright (c) 2026 PADL Software Pty Ltd
+//
+// Licensed under the Apache License, Version 2.0 (the License);
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an 'AS IS' BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+import Foundation
+import NMOS
+import SwiftOCA
+import SwiftOCADevice
+
+/// A stream endpoint of a media transport application: what the bridge presents as an
+/// NMOS sender (with its source and flow) or receiver.
+public struct NMOSOcaEndpoint: Sendable {
+  public let application: SwiftOCADevice.OcaMediaTransportApplication
+  public let endpoint: OcaMediaStreamEndpoint
+  public let status: OcaMediaStreamEndpointStatus?
+
+  public init(
+    application: SwiftOCADevice.OcaMediaTransportApplication,
+    endpoint: OcaMediaStreamEndpoint,
+    status: OcaMediaStreamEndpointStatus?
+  ) {
+    self.application = application
+    self.endpoint = endpoint
+    self.status = status
+  }
+
+  /// An output endpoint sends to the network, so it is an NMOS sender.
+  public var isSender: Bool { endpoint.direction == .output }
+
+  public var kind: NMOSResourceKind { isSender ? .sender : .receiver }
+
+  public func id(_ kind: NMOSResourceKind, in ids: NMOSOcaResourceIDs) -> NMOSID {
+    ids.id(kind, application: application.objectNumber, endpoint: endpoint.idInternal)
+  }
+}
+
+/// Finds the device's media transport applications, network interfaces and stream
+/// endpoints through its network manager, and observes them as they change. It reads
+/// only AES70 connection management objects, so it serves any transport.
+@OcaDevice
+public final class NMOSOcaEndpointWalker: Sendable {
+  private let device: OcaDevice
+  private let adaptations: NMOSOcaAdaptations
+
+  /// `adaptations` are those whose reads the consumer makes, which are observed too.
+  public nonisolated init(device: OcaDevice = .shared, adaptations: NMOSOcaAdaptations = .standard) {
+    self.device = device
+    self.adaptations = adaptations
+  }
+
+  public var networkManager: SwiftOCADevice.OcaNetworkManager? {
+    get async { await device.resolve(objectNumber: OcaNetworkManagerONo) }
+  }
+
+  public var applications: [SwiftOCADevice.OcaMediaTransportApplication] {
+    get async {
+      await networkManager?.networkApplications.compactMap { $0 as? SwiftOCADevice.OcaMediaTransportApplication } ?? []
+    }
+  }
+
+  public var networkInterfaces: [SwiftOCADevice.OcaNetworkInterface] {
+    get async { await networkManager?.networkInterfaces ?? [] }
+  }
+
+  public var endpoints: [NMOSOcaEndpoint] {
+    get async {
+      await applications.flatMap { application in
+        application.endpoints.map {
+          NMOSOcaEndpoint(
+            application: application,
+            endpoint: $0,
+            status: application.endpointStatuses[$0.idInternal]
+          )
+        }
+      }
+    }
+  }
+
+  static let observedProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaNetworkManager.self, [
+    .init(defLevel: 3, propertyIndex: 5): { $0.networkInterfaces.map(\.objectNumber) },
+    .init(defLevel: 3, propertyIndex: 6): { $0.networkApplications.map(\.objectNumber) },
+  ]) + .of(SwiftOCADevice.OcaMediaTransportApplication.self, [
+    .init(defLevel: 3, propertyIndex: 10): { $0.endpoints },
+    .init(defLevel: 3, propertyIndex: 11): { $0.endpointStatuses },
+  ])
+
+  /// Yields whenever something the bridge reads of the network manager, an application
+  /// or a network interface changes, and once at the start. Counters and status, which a
+  /// transport reports continually, are not among them, nor is a property set again to
+  /// the value it has. Changes that arrive together are reported once; the consumer
+  /// re-reads what it needs. Ends when the consumer stops iterating.
+  public nonisolated func changes() -> AsyncStream<Void> {
+    AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+      let task = Task { @OcaDevice in await self.observe(continuation) }
+      continuation.onTermination = { _ in task.cancel() }
+    }
+  }
+
+  private var observedObjects: [SwiftOCADevice.OcaRoot] {
+    get async {
+      let manager: [SwiftOCADevice.OcaRoot] = await networkManager.map { [$0] } ?? []
+      return await manager + applications + networkInterfaces
+    }
+  }
+
+  private func observe(_ continuation: AsyncStream<Void>.Continuation) async {
+    while !Task.isCancelled {
+      let objects = await observedObjects
+      guard !objects.isEmpty else {
+        // a device without a network manager has nothing to observe: a device makes its
+        // manager before NMOS starts, and NMOS stops before the manager goes
+        continuation.yield()
+        await Self.untilCancelled()
+        break
+      }
+      // what each object holds is noted before the consumer is told to read it all
+      let properties = adaptations.observedProperties
+      let observed = objects.map { NMOSOcaObservedObject($0, observing: properties) }
+      continuation.yield()
+      // only the network manager's lists of applications and interfaces change the set
+      await NMOSOcaObservedObject.observe(observed) { object in
+        continuation.yield()
+        return !(object.object is SwiftOCADevice.OcaNetworkManager)
+      }
+    }
+    continuation.finish()
+  }
+
+  /// Yields whenever something the walker observes changes or something read of `objects`
+  /// does, and once at the start. `objects` is asked again at each change the walker
+  /// reports, and its objects are observed afresh when they are not those it gave before.
+  nonisolated func changes(
+    observing objects: @escaping @Sendable @OcaDevice () async -> [SwiftOCADevice.OcaRoot]
+  ) -> AsyncStream<Void> {
+    AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+      let task = Task { @OcaDevice in
+        await self.observe(objects, continuation)
+        continuation.finish()
+      }
+      continuation.onTermination = { _ in task.cancel() }
+    }
+  }
+
+  private func observe(
+    _ objects: @escaping @Sendable @OcaDevice () async -> [SwiftOCADevice.OcaRoot],
+    _ continuation: AsyncStream<Void>.Continuation
+  ) async {
+    while !Task.isCancelled {
+      let current = await objects()
+      let observedNumbers = current.map(\.objectNumber)
+      // what each object holds is noted before the consumer is told to read it all
+      let properties = adaptations.observedProperties
+      let observed = current.map { NMOSOcaObservedObject($0, observing: properties) }
+      continuation.yield()
+      await NMOSOcaObservedObject.observe(observed, alongside: {
+        for await _ in self.changes() {
+          continuation.yield()
+          if await objects().map(\.objectNumber) != observedNumbers { return }
+        }
+      }) { _ in
+        continuation.yield()
+        return true
+      }
+    }
+  }
+
+  private static func untilCancelled() async {
+    let (stream, continuation) = AsyncStream.makeStream(of: Never.self)
+    await withTaskCancellationHandler {
+      for await _ in stream {}
+    } onCancel: {
+      continuation.finish()
+    }
+  }
+}

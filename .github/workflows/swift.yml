@@ -1,0 +1,51 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  darwin:
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install swiftly
+        run: |
+          curl -L https://download.swift.org/swiftly/darwin/swiftly.pkg > swiftly.pkg
+          installer -pkg swiftly.pkg -target CurrentUserHomeDirectory
+          ~/.swiftly/bin/swiftly init --assume-yes --skip-install
+      - name: Install Swift
+        run: |
+          . ~/.swiftly/env.sh
+          swiftly install latest --post-install-file=post-install.sh
+          if [ -f post-install.sh ]; then . post-install.sh; fi
+          echo "$HOME/.swiftly/bin" >> $GITHUB_PATH
+      - name: Version
+        run: swift --version
+      - name: Build
+        run: swift build --build-tests
+      - name: Test
+        run: swift test --skip-build
+        timeout-minutes: 10
+
+  linux:
+    runs-on: ubuntu-24.04
+    container: swift:6.3
+    steps:
+      - name: Packages
+        run: |
+          apt-get update
+          apt-get install -y liburing-dev libavahi-compat-libdnssd-dev libavahi-client-dev libssl-dev
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Version
+        run: swift --version
+      - name: Build
+        run: swift build --build-tests
+      - name: Test
+        run: |
+          sysctl kernel.io_uring_disabled=0
+          swift test --skip-build
+        timeout-minutes: 10

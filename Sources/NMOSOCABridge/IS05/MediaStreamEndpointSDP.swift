@@ -1,0 +1,363 @@
+//
+// Copyright (c) 2026 PADL Software Pty Ltd
+//
+// Licensed under the Apache License, Version 2.0 (the License);
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an 'AS IS' BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+import Foundation
+import SwiftOCA
+import SwiftOCADevice
+
+/// Session descriptions of an application's stream endpoints. AES70-21 gives the AES67
+/// application ConfigureEndpointFromSDP and an ActiveSDP field; AES70-23 gives Dante
+/// neither, so this protocol is how a bridge such as NMOS patches either transport by
+/// exchanging descriptions with whichever application the operation mode instantiated.
+@OcaDevice
+public protocol MediaStreamEndpointSDPRepresentable: SwiftOCADevice.OcaMediaTransportApplication {
+  /// The description of the stream the endpoint sends or receives, empty when it carries
+  /// no stream.
+  func getActiveSDP(_ id: OcaMediaStreamEndpointID) async throws -> OcaSDPString
+
+  /// Subscribes an input endpoint to the stream the description and stream ID select
+  /// (see `MediaStreamSDP.selectStream`); an empty description clears the subscription.
+  func configureEndpointFromSDP(
+    endpointID: OcaMediaStreamEndpointID,
+    sdpString: OcaSDPString,
+    streamID: OcaUint16,
+    from controller: any OcaController
+  ) async throws
+
+  /// Whether the endpoint is patched by exchanging descriptions. An application with a
+  /// native transport of its own answers per endpoint, as Dante does in AES67 mode.
+  func usesSessionDescription(_ id: OcaMediaStreamEndpointID) async -> Bool
+}
+
+public extension MediaStreamEndpointSDPRepresentable {
+  func usesSessionDescription(_ id: OcaMediaStreamEndpointID) async -> Bool { true }
+}
+
+/// The subset of an AES67 audio session description that the transports exchange:
+/// RFC 4566 with the RFC 7273 clock attributes AES67 §8 requires.
+public struct MediaStreamSDP: Sendable, Equatable {
+  public enum Direction: String, Sendable {
+    case sendOnly = "sendonly"
+    case receiveOnly = "recvonly"
+    case sendAndReceive = "sendrecv"
+  }
+
+  /// Identity of the session, unique with `originAddress` for its lifetime.
+  public var sessionID: UInt64
+  /// Incremented by the sender whenever the description changes.
+  public var sessionVersion: UInt64
+  /// Address of the host that authored the description.
+  public var originAddress: String
+  public var sessionName: String
+  /// Free text about the stream, the "i=" line; AES70-21 carries it as MediaInfo.
+  public var sessionInformation: String?
+  /// Where the stream is sent: a multicast group, or the receiver for a unicast stream.
+  public var destinationAddress: String
+  public var destinationPort: UInt16
+  /// Multicast scope, omitted from the connection line when nil.
+  public var timeToLive: UInt8?
+  /// The address the stream is sent from, when the description filters on it (RFC 4570).
+  public var sourceAddress: String?
+  public var payloadType: UInt8
+  /// Bits per sample, carried in the encoding name as L16, L24 or L32.
+  public var sampleSize: UInt8
+  public var sampleRate: UInt32
+  public var channelCount: UInt16
+  /// Packet duration in seconds.
+  public var packetTime: TimeInterval
+  /// Grandmaster identity as the eight hyphen-separated octets of RFC 7273 §4.8.
+  public var ptpGrandmasterID: String?
+  public var ptpDomain: UInt8?
+  /// RTP timestamp of the media clock's zero point.
+  public var mediaClockOffset: UInt32?
+  public var direction: Direction
+
+  public init(
+    sessionID: UInt64,
+    sessionVersion: UInt64,
+    originAddress: String,
+    sessionName: String,
+    sessionInformation: String? = nil,
+    destinationAddress: String,
+    destinationPort: UInt16,
+    timeToLive: UInt8? = nil,
+    sourceAddress: String? = nil,
+    payloadType: UInt8,
+    sampleSize: UInt8,
+    sampleRate: UInt32,
+    channelCount: UInt16,
+    packetTime: TimeInterval,
+    ptpGrandmasterID: String? = nil,
+    ptpDomain: UInt8? = nil,
+    mediaClockOffset: UInt32? = nil,
+    direction: Direction
+  ) {
+    self.sessionID = sessionID
+    self.sessionVersion = sessionVersion
+    self.originAddress = originAddress
+    self.sessionName = sessionName
+    self.sessionInformation = sessionInformation
+    self.destinationAddress = destinationAddress
+    self.destinationPort = destinationPort
+    self.timeToLive = timeToLive
+    self.sourceAddress = sourceAddress
+    self.payloadType = payloadType
+    self.sampleSize = sampleSize
+    self.sampleRate = sampleRate
+    self.channelCount = channelCount
+    self.packetTime = packetTime
+    self.ptpGrandmasterID = ptpGrandmasterID
+    self.ptpDomain = ptpDomain
+    self.mediaClockOffset = mediaClockOffset
+    self.direction = direction
+  }
+
+  public var encodingName: String { "L\(sampleSize)" }
+
+  /// The AES70 media stream mode this description carries.
+  public var mediaStreamMode: OcaMediaStreamMode {
+    OcaMediaStreamMode(
+      frameFormat: .rtp,
+      encodingType: "audio/\(encodingName)",
+      samplingRate: OcaFrequency(sampleRate),
+      channelCount: channelCount,
+      packetTime: packetTime
+    )
+  }
+
+  public var isMulticast: Bool { Self.isMulticast(destinationAddress) }
+
+  /// Whether an address, IPv4 or IPv6 as text, is a multicast group.
+  public static func isMulticast(_ address: String) -> Bool {
+    if address.contains(":") { return address.lowercased().hasPrefix("ff") }
+    guard let first = address.split(separator: ".").first, let octet = UInt8(first) else { return false }
+    return (224...239).contains(octet)
+  }
+}
+
+// MARK: - Rendering
+
+public extension MediaStreamSDP {
+  /// RFC 4566 text, with the CRLF line endings RFC 4566 §5 requires.
+  var sdpString: OcaSDPString {
+    var lines = [
+      "v=0",
+      "o=- \(sessionID) \(sessionVersion) IN IP4 \(originAddress)",
+      "s=\(sessionName)",
+    ]
+    if let sessionInformation {
+      lines.append("i=\(sessionInformation)")
+    }
+    // the connection line goes in the media section, as AES67 and ST 2110 senders have it
+    // and as a description of more than one stream must
+    lines += [
+      "t=0 0",
+      "m=audio \(destinationPort) RTP/AVP \(payloadType)",
+      timeToLive.map { "c=IN IP4 \(destinationAddress)/\($0)" } ?? "c=IN IP4 \(destinationAddress)",
+      "a=rtpmap:\(payloadType) \(encodingName)/\(sampleRate)/\(channelCount)",
+      "a=ptime:\(Self.format(milliseconds: packetTime * 1000))",
+    ]
+    if let sourceAddress {
+      lines.append("a=source-filter: incl IN IP4 \(destinationAddress) \(sourceAddress)")
+    }
+    if let ptpGrandmasterID {
+      let domain = ptpDomain.map { ":\($0)" } ?? ""
+      lines.append("a=ts-refclk:ptp=IEEE1588-2008:\(ptpGrandmasterID)\(domain)")
+    }
+    if let mediaClockOffset {
+      lines.append("a=mediaclk:direct=\(mediaClockOffset)")
+    }
+    lines.append("a=\(direction.rawValue)")
+    return lines.joined(separator: "\r\n") + "\r\n"
+  }
+
+  private static func format(milliseconds: Double) -> String {
+    String(format: "%g", milliseconds)
+  }
+}
+
+// MARK: - Parsing
+
+public extension MediaStreamSDP {
+  /// The session section followed by each media section, one description per stream, so
+  /// a multistream description such as an ST 2022-7 pair can be read a stream at a time.
+  static func streams(in sdpString: OcaSDPString) -> [OcaSDPString] {
+    let (session, media) = sections(of: sdpString)
+    return media.map { (session + $0).joined(separator: "\r\n") + "\r\n" }
+  }
+
+  /// AES70-21 §10.2.4 stream selection: the session section with the one media section
+  /// whose port is `streamID`. A single stream also matches a zero stream ID; a
+  /// multistream description needs a nonzero one.
+  static func selectStream(in sdpString: OcaSDPString, streamID: OcaUint16) throws -> OcaSDPString {
+    let (session, media) = sections(of: sdpString)
+    // m=<media> <port>[/<number of ports>] <proto> <fmt>
+    func port(_ section: [Substring]) -> OcaUint16? {
+      let fields = section[0].dropFirst(2).split(separator: " ")
+      return fields.count > 1 ? fields[1].split(separator: "/").first.flatMap { OcaUint16($0) } : nil
+    }
+    let selected: [Substring]? = if streamID == 0 {
+      media.count == 1 ? media[0] : nil
+    } else {
+      media.first { port($0) == streamID }
+    }
+    guard let selected else { throw Ocp1Error.status(.parameterError) }
+    return (session + selected).joined(separator: "\r\n") + "\r\n"
+  }
+
+  private static func sections(
+    of sdpString: OcaSDPString
+  ) -> (session: [Substring], media: [[Substring]]) {
+    var session = [Substring]()
+    var media = [[Substring]]()
+    for line in sdpString.split(whereSeparator: \.isNewline) {
+      if line.hasPrefix("m=") {
+        media.append([line])
+      } else if media.isEmpty {
+        session.append(line)
+      } else {
+        media[media.count - 1].append(line)
+      }
+    }
+    return (session, media)
+  }
+}
+
+public extension MediaStreamSDP {
+  /// Reads the fields AES67 requires; returns nil when any of them is absent or malformed.
+  init?(sdpString: OcaSDPString) {
+    var origin: (sessionID: UInt64, version: UInt64, address: String)?
+    var sessionName = ""
+    var sessionInformation: String?
+    var connection: (address: String, ttl: UInt8?)?
+    var media: (port: UInt16, payloadType: UInt8)?
+    var rtpmap: (payloadType: UInt8, sampleSize: UInt8, rate: UInt32, channels: UInt16)?
+    var packetTime: TimeInterval?
+    var grandmasterID: String?
+    var domain: UInt8?
+    var clockOffset: UInt32?
+    var direction = Direction.sendOnly
+    var sourceAddress: String?
+
+    // a CRLF pair is one Character, so match any newline rather than its parts
+    for line in sdpString.split(whereSeparator: \.isNewline) {
+      let value = String(line.dropFirst(2))
+      switch line.prefix(2) {
+      case "o=":
+        // <username> <session id> <version> IN IP4 <address>
+        let fields = value.split(separator: " ")
+        guard fields.count >= 6, let id = UInt64(fields[1]), let version = UInt64(fields[2])
+        else { return nil }
+        origin = (id, version, String(fields[5]))
+      case "s=":
+        sessionName = value
+      case "i=":
+        sessionInformation = value
+      case "c=":
+        // IN IP4 <address>[/<ttl>]
+        let fields = value.split(separator: " ")
+        guard fields.count >= 3 else { return nil }
+        let address = fields[2].split(separator: "/")
+        guard let host = address.first else { return nil }
+        connection = (String(host), address.count > 1 ? UInt8(address[1]) : nil)
+      case "m=":
+        // audio <port> RTP/AVP <payload type>
+        let fields = value.split(separator: " ")
+        guard fields.count >= 4, fields[0] == "audio", let port = UInt16(fields[1]),
+              let payloadType = UInt8(fields[3]) else { return nil }
+        media = (port, payloadType)
+      case "a=":
+        Self.parse(attribute: value, rtpmap: &rtpmap, packetTime: &packetTime,
+                   grandmasterID: &grandmasterID, domain: &domain,
+                   clockOffset: &clockOffset, direction: &direction, sourceAddress: &sourceAddress)
+      default:
+        break
+      }
+    }
+
+    guard let origin, let connection, let media, let rtpmap, rtpmap.payloadType == media.payloadType
+    else { return nil }
+    // "inf" and "nan" read as numbers; what is computed from a packet time needs a real one
+    if let packetTime, !(packetTime.isFinite && packetTime > 0) { return nil }
+
+    self.init(
+      sessionID: origin.sessionID,
+      sessionVersion: origin.version,
+      originAddress: origin.address,
+      sessionName: sessionName,
+      sessionInformation: sessionInformation,
+      destinationAddress: connection.address,
+      destinationPort: media.port,
+      timeToLive: connection.ttl,
+      sourceAddress: sourceAddress,
+      payloadType: media.payloadType,
+      sampleSize: rtpmap.sampleSize,
+      sampleRate: rtpmap.rate,
+      channelCount: rtpmap.channels,
+      // AES67 §7 defaults to 1 ms when the description omits ptime
+      packetTime: packetTime ?? 1e-3,
+      ptpGrandmasterID: grandmasterID,
+      ptpDomain: domain,
+      mediaClockOffset: clockOffset,
+      direction: direction
+    )
+  }
+
+  private static func parse(
+    attribute: String,
+    rtpmap: inout (payloadType: UInt8, sampleSize: UInt8, rate: UInt32, channels: UInt16)?,
+    packetTime: inout TimeInterval?,
+    grandmasterID: inout String?,
+    domain: inout UInt8?,
+    clockOffset: inout UInt32?,
+    direction: inout Direction,
+    sourceAddress: inout String?
+  ) {
+    if let value = attribute.afterPrefix("rtpmap:") {
+      // <payload type> L<bits>/<rate>[/<channels>]
+      let fields = value.split(separator: " ")
+      guard fields.count >= 2, let payloadType = UInt8(fields[0]) else { return }
+      let format = fields[1].split(separator: "/")
+      guard format.count >= 2, format[0].hasPrefix("L"),
+            let sampleSize = UInt8(format[0].dropFirst()),
+            let rate = UInt32(format[1]) else { return }
+      rtpmap = (payloadType, sampleSize, rate, format.count > 2 ? UInt16(format[2]) ?? 1 : 1)
+    } else if let value = attribute.afterPrefix("ptime:"), let milliseconds = Double(value) {
+      packetTime = milliseconds / 1000
+    } else if let value = attribute.afterPrefix("ts-refclk:ptp=") {
+      // <ptp version>:<grandmaster id>[:<domain>]
+      let fields = value.split(separator: ":")
+      guard fields.count >= 2 else { return }
+      grandmasterID = String(fields[1])
+      domain = fields.count > 2 ? UInt8(fields[2]) : nil
+    } else if let value = attribute.afterPrefix("mediaclk:direct=") {
+      clockOffset = UInt32(value)
+    } else if let value = attribute.afterPrefix("source-filter:") {
+      // incl IN IP4 <destination> <source>...; an exclusion names no one source
+      let fields = value.split(separator: " ")
+      guard fields.count >= 5, fields[0] == "incl" else { return }
+      sourceAddress = String(fields[4])
+    } else if let parsed = Direction(rawValue: attribute) {
+      direction = parsed
+    }
+  }
+}
+
+private extension String {
+  func afterPrefix(_ prefix: String) -> String? {
+    hasPrefix(prefix) ? String(dropFirst(prefix.count)) : nil
+  }
+}
