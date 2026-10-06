@@ -877,7 +877,8 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     try await Fixture.block.add(actionObject: added)
     let found = await get(added.objectNumber, 1, 2)
     XCTAssertEqual(found.value, .integer(Int64(added.objectNumber)))
-    let members = await model.source.members(of: Fixture.block.objectNumber)
+    let block = await model.source.identity(of: Fixture.block.objectNumber)
+    let members = try await model.source.members(of: XCTUnwrap(block)).map(\.oid)
     XCTAssertTrue(members.contains(added.objectNumber))
     try await Fixture.block.delete(actionObject: added)
     let removed = await get(added.objectNumber, 1, 2)
@@ -977,8 +978,9 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   @OcaDevice
   func testAModelThatGoesAwayTakesItsEndpointFromTheDevice() async throws {
     var model: NMOSOcaDeviceModel? = NMOSOcaDeviceModel(device: OcaDevice.shared)
-    // walking the tree gives the device the endpoint and the bridge's controller
-    let members = await model?.source.members(of: 1)
+    // looking at the tree gives the device the endpoint
+    let root = await model?.source.identity(of: 1)
+    let members = try await model?.source.members(of: XCTUnwrap(root))
     XCTAssertFalse(members?.isEmpty ?? true)
     let endpoint = try XCTUnwrap(model?.source.endpoint)
     model = nil

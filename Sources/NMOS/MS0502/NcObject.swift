@@ -20,12 +20,12 @@ import Foundation
 /// its own methods and properties and passes the rest to the class it derives from, as
 /// SwiftOCA's classes do; what no standard class has is the source's.
 class NcObject<Source: NcObjectSource> {
-  let identity: NcObjectIdentity
+  let identity: Source.Identity
   let model: NcObjectModel<Source>
 
   var source: Source { model.source }
 
-  init(_ identity: NcObjectIdentity, model: NcObjectModel<Source>) {
+  init(_ identity: Source.Identity, model: NcObjectModel<Source>) {
     self.identity = identity
     self.model = model
   }
@@ -35,7 +35,7 @@ class NcObject<Source: NcObjectSource> {
     case (1, 1): try await get(arguments.propertyID(), session)
     case (1, 2): try await set(arguments.propertyID(), to: arguments.value(), session)
     case (1, 3...7): try await sequence(command.methodID.index, arguments, session)
-    default: await source.handleCommand(command, session: session)
+    default: await source.handleCommand(command, on: identity, session: session)
     }
   }
 
@@ -46,16 +46,16 @@ class NcObject<Source: NcObjectSource> {
     case (1, 3): return NcMethodResult(value: .bool(identity.constantOid))
     case (1, 4): return NcMethodResult(value: identity.owner.map { .integer(Int64($0)) } ?? .null)
     case (1, 5): return NcMethodResult(value: .string(identity.role))
-    case (1, 7): return await NcMethodResult(value: source.touchpoints(of: identity.oid).map { .array($0.map(\.json)) } ?? .null)
+    case (1, 7): return await NcMethodResult(value: source.touchpoints(of: identity).map { .array($0.map(\.json)) } ?? .null)
     case (1, 8):
-      let constraints = await source.runtimeConstraints(of: identity.oid, session: session)
+      let constraints = await source.runtimeConstraints(of: identity, session: session)
       return NcMethodResult(value: constraints.isEmpty ? .null : .array(constraints))
     case (1, 6): break
     case (1, _): return Self.noProperty(property)
     default: break
     }
     // the user label, and whatever the classes derived from NcObject have
-    return await source.get(property, of: identity.oid, session: session)
+    return await source.get(property, of: identity, session: session)
   }
 
   func set(_ property: NcElementID, to value: NMOSJSONValue, _ session: NcSession) async -> NcMethodResult {
@@ -67,7 +67,7 @@ class NcObject<Source: NcObjectSource> {
     }
     // a property MS-05-02 declares read only is read only, whatever the source has
     if Self.standardProperty(property, of: identity.classID)?.isReadOnly == true { return Self.readOnly(property) }
-    return await source.set(property, of: identity.oid, to: value, session: session)
+    return await source.set(property, of: identity, to: value, session: session)
   }
 
   /// The descriptor of a property a standard class in the lineage declares.
@@ -177,7 +177,7 @@ final class NcBlock<Source: NcObjectSource>: NcObject<Source> {
 
   override func get(_ property: NcElementID, _ session: NcSession) async -> NcMethodResult {
     guard property == Self.members else { return await super.get(property, session) }
-    let members = await descriptors(of: identity.oid, recurse: false, session)
+    let members = await descriptors(of: identity, recurse: false, session)
     return NcMethodResult(value: .array(members.map(\.member.json)))
   }
 
@@ -196,11 +196,11 @@ final class NcBlock<Source: NcObjectSource>: NcObject<Source> {
     let found: [NcBlockMemberDescriptor]
     switch method {
     case 1:
-      found = try await descriptors(of: identity.oid, recurse: arguments.bool("recurse"), session).map(\.member)
+      found = try await descriptors(of: identity, recurse: arguments.bool("recurse"), session).map(\.member)
     case 2:
       let path = try arguments.strings("path")
       guard !path.isEmpty else { throw NcArgumentError("The path to search for is empty") }
-      let members = await descriptors(of: identity.oid, recurse: true, session)
+      let members = await descriptors(of: identity, recurse: true, session)
       guard let member = members.first(where: { $0.path == path }) else {
         return .error(.badOid, "No member at \(path.joined(separator: "/"))")
       }
@@ -211,7 +211,7 @@ final class NcBlock<Source: NcObjectSource>: NcObject<Source> {
       let caseSensitive = try arguments.bool("caseSensitive")
       let wholeString = try arguments.bool("matchWholeString")
       let sought = caseSensitive ? role : role.lowercased()
-      found = try await descriptors(of: identity.oid, recurse: arguments.bool("recurse"), session).map(\.member)
+      found = try await descriptors(of: identity, recurse: arguments.bool("recurse"), session).map(\.member)
         .filter { member in
           let candidate = caseSensitive ? member.role : member.role.lowercased()
           return wholeString ? candidate == sought : candidate.contains(sought)
@@ -221,42 +221,37 @@ final class NcBlock<Source: NcObjectSource>: NcObject<Source> {
         throw NcArgumentError("classId is not a class ID")
       }
       let includeDerived = try arguments.bool("includeDerived")
-      found = try await descriptors(of: identity.oid, recurse: arguments.bool("recurse"), session).map(\.member)
+      found = try await descriptors(of: identity, recurse: arguments.bool("recurse"), session).map(\.member)
         .filter { includeDerived ? $0.classID.starts(with: classID) : $0.classID == classID }
     }
     return NcMethodResult(value: .array(found.map(\.json)))
   }
 
-  private func descriptor(
-    of oid: NcOid,
-    in block: NcOid,
-    _ session: NcSession
-  ) async -> NcBlockMemberDescriptor? {
-    guard let member = await source.identity(of: oid) else { return nil }
-    return await NcBlockMemberDescriptor(
+  private func descriptor(of member: Source.Identity, _ session: NcSession) async -> NcBlockMemberDescriptor {
+    await NcBlockMemberDescriptor(
       role: member.role,
-      oid: oid,
+      oid: member.oid,
       constantOid: member.constantOid,
       classID: member.classID,
-      userLabel: source.get(.userLabel, of: oid, session: session).value?.stringValue,
-      owner: block
+      userLabel: source.get(.userLabel, of: member, session: session).value?.stringValue,
+      owner: member.owner ?? identity.oid
     )
   }
 
   /// The block's members with their role paths relative to it, depth first.
   private func descriptors(
-    of block: NcOid,
+    of block: Source.Identity,
     recurse: Bool,
     under path: [String] = [],
     _ session: NcSession
   ) async -> [(path: [String], member: NcBlockMemberDescriptor)] {
     var found = [(path: [String], member: NcBlockMemberDescriptor)]()
-    for oid in await source.members(of: block) {
-      guard let member = await descriptor(of: oid, in: block, session) else { continue }
+    for member in await source.members(of: block) {
+      let descriptor = await descriptor(of: member, session)
       let path = path + [member.role]
-      found.append((path, member))
+      found.append((path, descriptor))
       if recurse, member.classID.starts(with: NcStandardModel.block) {
-        found += await descriptors(of: oid, recurse: true, under: path, session)
+        found += await descriptors(of: member, recurse: true, under: path, session)
       }
     }
     return found

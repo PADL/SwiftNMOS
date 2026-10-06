@@ -17,8 +17,9 @@
 import Foundation
 import Synchronization
 
-/// What `NcObject` says of an object, apart from its user label.
-public struct NcObjectIdentity: Sendable, Hashable {
+/// What `NcObject` says of an object, apart from its user label, and what the source
+/// knows the object by, which it is handed back with every request about the object.
+public struct NcObjectIdentity<Object: Sendable>: Sendable {
   public var classID: NcClassID
   public var oid: NcOid
   /// Whether the object keeps this oid across restarts.
@@ -26,19 +27,22 @@ public struct NcObjectIdentity: Sendable, Hashable {
   /// The block that contains the object; nil only for the root block.
   public var owner: NcOid?
   public var role: String
+  public var object: Object
 
   public init(
     classID: NcClassID,
     oid: NcOid,
     constantOid: Bool = true,
     owner: NcOid?,
-    role: String
+    role: String,
+    object: Object
   ) {
     self.classID = classID
     self.oid = oid
     self.constantOid = constantOid
     self.owner = owner
     self.role = role
+    self.object = object
   }
 }
 
@@ -46,36 +50,40 @@ public struct NcObjectIdentity: Sendable, Hashable {
 /// identity, the members of its blocks and its properties; the model supplies what
 /// MS-05-02 specifies of every object, block and class manager.
 public protocol NcObjectSource: Sendable {
+  /// What the source knows an object by.
+  associatedtype Object: Sendable
+  typealias Identity = NcObjectIdentity<Object>
+
   /// The object's identity, nil if there is no such object. The root block is oid 1.
-  func identity(of oid: NcOid) async -> NcObjectIdentity?
+  func identity(of oid: NcOid) async -> Identity?
 
   /// The objects a block directly contains, in a stable order.
-  func members(of block: NcOid) async -> [NcOid]
+  func members(of block: Identity) async -> [Identity]
 
   /// Reads a property for a session: the user label (1p6), and everything below
   /// `NcObject` except a block's members. An ID the object's class does not have is
   /// `propertyNotImplemented`.
-  func get(_ property: NcElementID, of oid: NcOid, session: NcSession) async -> NcMethodResult
+  func get(_ property: NcElementID, of object: Identity, session: NcSession) async -> NcMethodResult
 
   /// Writes a property `get` reads; one that cannot be written is `readonly`.
   func set(
     _ property: NcElementID,
-    of oid: NcOid,
+    of object: Identity,
     to value: NMOSJSONValue,
     session: NcSession
   ) async -> NcMethodResult
 
   /// The resources of other specifications the object stands for (`touchpoints`, 1p7);
   /// nil if it stands for none. Asked only when 1p7 is read.
-  func touchpoints(of oid: NcOid) async -> [NcTouchpoint]?
+  func touchpoints(of object: Identity) async -> [NcTouchpoint]?
 
   /// The constraints on the object's properties that are its own and not its class's
   /// (`runtimePropertyConstraints`, 1p8), as `NcPropertyConstraints` objects; empty if
   /// it has none.
-  func runtimeConstraints(of oid: NcOid, session: NcSession) async -> [NMOSJSONValue]
+  func runtimeConstraints(of object: Identity, session: NcSession) async -> [NMOSJSONValue]
 
   /// A command for a method no standard class of the model defines.
-  func handleCommand(_ command: NcCommand, session: NcSession) async -> NcMethodResult
+  func handleCommand(_ command: NcCommand, on object: Identity, session: NcSession) async -> NcMethodResult
 
   /// The classes and datatypes of the objects that are not standard ones. The class
   /// manager asks for them at every lookup, so a source should keep the lists it
@@ -90,12 +98,12 @@ public protocol NcObjectSource: Sendable {
 }
 
 public extension NcObjectSource {
-  func handleCommand(_ command: NcCommand, session: NcSession) async -> NcMethodResult {
+  func handleCommand(_ command: NcCommand, on object: Identity, session: NcSession) async -> NcMethodResult {
     .error(.methodNotImplemented, "No method \(command.methodID.level)m\(command.methodID.index)")
   }
 
-  func runtimeConstraints(of oid: NcOid, session: NcSession) async -> [NMOSJSONValue] { [] }
-  func touchpoints(of oid: NcOid) async -> [NcTouchpoint]? { nil }
+  func runtimeConstraints(of object: Identity, session: NcSession) async -> [NMOSJSONValue] { [] }
+  func touchpoints(of object: Identity) async -> [NcTouchpoint]? { nil }
   func classes() async -> [NcClassDescriptor] { [] }
   func datatypes() async -> [NcDatatypeDescriptor] { [] }
   func subscriptionsChanged(to oids: Set<NcOid>, session: NcSession) async {}
@@ -134,7 +142,7 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
   }
 
   /// The object as the nearest standard class in its lineage that has a class here.
-  func object(_ identity: NcObjectIdentity) -> NcObject<Source> {
+  func object(_ identity: Source.Identity) -> NcObject<Source> {
     var classID: NcClassID? = identity.classID
     while let id = classID {
       switch id {

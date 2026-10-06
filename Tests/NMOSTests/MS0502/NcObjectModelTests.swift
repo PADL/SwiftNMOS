@@ -22,20 +22,22 @@ import XCTest
 /// A small device: a root block holding a device manager, a block of two workers, a
 /// bare object and the class manager, which has no label. One worker is of a vendor class with a gain and a sequence of taps.
 private final class FixtureObjectSource: NcObjectSource {
+  typealias Object = NcOid
+
   static let vendorGain: NcClassID = [1, 2, 0, 1]
   static let gain = NcElementID(level: 3, index: 1)
   static let taps = NcElementID(level: 3, index: 2)
   static let tags = NcElementID(level: 3, index: 3)
   static let enabled = NcElementID(level: 2, index: 1)
 
-  private struct Object {
-    var identity: NcObjectIdentity
+  private struct Fixture {
+    var identity: Identity
     var members = [NcOid]()
     var properties = [NcElementID: NMOSJSONValue]()
     var readOnly = Set<NcElementID>()
   }
 
-  private let objects: Mutex<[NcOid: Object]>
+  private let objects: Mutex<[NcOid: Fixture]>
   private let listeners = Mutex([NcSession: AsyncStream<NcNotification>.Continuation]())
   let subscriptions = Mutex([NcSession: Set<NcOid>]())
   let ended = Mutex([NcSession]())
@@ -48,11 +50,11 @@ private final class FixtureObjectSource: NcObjectSource {
     func object(
       _ oid: NcOid, _ classID: NcClassID, _ role: String, owner: NcOid?,
       members: [NcOid] = [], properties: [NcElementID: NMOSJSONValue] = [:], readOnly: Set<NcElementID> = []
-    ) -> (NcOid, Object) {
+    ) -> (NcOid, Fixture) {
       var properties = properties
       properties[.userLabel] = properties[.userLabel] ?? .null
-      return (oid, Object(
-        identity: NcObjectIdentity(classID: classID, oid: oid, owner: owner, role: role),
+      return (oid, Fixture(
+        identity: Identity(classID: classID, oid: oid, owner: owner, role: role, object: oid),
         members: members, properties: properties, readOnly: readOnly
       ))
     }
@@ -72,14 +74,18 @@ private final class FixtureObjectSource: NcObjectSource {
     ]))
   }
 
-  func identity(of oid: NcOid) async -> NcObjectIdentity? { objects.withLock { $0[oid]?.identity } }
-  func members(of block: NcOid) async -> [NcOid] { objects.withLock { $0[block]?.members ?? [] } }
+  func identity(of oid: NcOid) async -> Identity? { objects.withLock { $0[oid]?.identity } }
 
-  func runtimeConstraints(of oid: NcOid, session: NcSession) async -> [NMOSJSONValue] {
-    constraints.withLock { $0[oid] ?? [] }
+  func members(of block: Identity) async -> [Identity] {
+    objects.withLock { objects in (objects[block.oid]?.members ?? []).compactMap { objects[$0]?.identity } }
   }
 
-  func get(_ property: NcElementID, of oid: NcOid, session: NcSession) async -> NcMethodResult {
+  func runtimeConstraints(of object: Identity, session: NcSession) async -> [NMOSJSONValue] {
+    constraints.withLock { $0[object.oid] ?? [] }
+  }
+
+  func get(_ property: NcElementID, of object: Identity, session: NcSession) async -> NcMethodResult {
+    let oid = object.oid
     guard let value = objects.withLock({ $0[oid]?.properties[property] }) else {
       return .error(.propertyNotImplemented, "no such property")
     }
@@ -88,10 +94,11 @@ private final class FixtureObjectSource: NcObjectSource {
 
   func set(
     _ property: NcElementID,
-    of oid: NcOid,
+    of object: Identity,
     to value: NMOSJSONValue,
     session: NcSession
   ) async -> NcMethodResult {
+    let oid = object.oid
     let result: NcMethodResult = objects.withLock { objects in
       guard let object = objects[oid], object.properties[property] != nil else {
         return .error(.propertyNotImplemented, "no such property")
