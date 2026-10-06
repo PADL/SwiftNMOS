@@ -54,8 +54,8 @@ public struct NMOSOcaControlMapping: Sendable {
   /// Where the value of a standard property comes from.
   public enum Source: Sendable {
     case constant(NMOSJSONValue)
-    /// An OCA property of the object; `fallback` serves an object that lacks it.
-    case property(OcaPropertyID, Transform = .identity, fallback: NMOSJSONValue)
+    /// An OCA property of the object.
+    case property(OcaPropertyID, Transform = .identity)
     /// A block's members, which the object model lists from the OCA property named.
     case members(OcaPropertyID)
   }
@@ -109,30 +109,28 @@ public struct NMOSOcaControlMapping: Sendable {
     anchors: [
       Anchor("1", NcStandardModel.object),
       Anchor("1.1", NcStandardModel.worker, [
-        Property(2, 1, .property("2.1", fallback: true)),
+        Property(2, 1, .property("2.1")),
       ]),
       Anchor("1.1.3", NcStandardModel.block, [
-        Property(2, 1, .property("2.1", fallback: true)),
+        Property(2, 1, .property("2.1")),
         Property(2, 2, .members("3.2")),
       ]),
       Anchor("1.1.1.21", NcStandardModel.identBeacon, [
-        Property(3, 1, .property("4.1", fallback: false)),
+        Property(3, 1, .property("4.1")),
       ]),
       Anchor("1.3", NcStandardModel.manager),
       Anchor(OcaClassManager.classID, NcStandardModel.classManager),
       Anchor("1.3.1", NcStandardModel.deviceManager, [
         Property(3, 1, .constant(.string(NcStandardModel.version))),
-        Property(3, 2, .property("3.15", .manufacturer, fallback: ["name": "", "organizationId": .null, "website": .null])),
-        Property(3, 3, .property("3.16", .product, fallback: [
-          "name": "", "key": "", "revisionLevel": "", "brandName": .null, "uuid": .null, "description": .null,
-        ])),
-        Property(3, 4, .property("3.2", fallback: "")),
-        Property(3, 5, .property("3.7", fallback: .null)),
-        Property(3, 6, .property("3.4", fallback: .null)),
-        Property(3, 7, .property("3.6", fallback: .null)),
-        Property(3, 8, .property("3.17", .operationalState, fallback: ["generic": 0, "deviceSpecificDetails": .null])),
-        Property(3, 9, .property("3.11", .resetCause, fallback: 0)),
-        Property(3, 10, .property("3.12", fallback: .null)),
+        Property(3, 2, .property("3.15", .manufacturer)),
+        Property(3, 3, .property("3.16", .product)),
+        Property(3, 4, .property("3.2")),
+        Property(3, 5, .property("3.7")),
+        Property(3, 6, .property("3.4")),
+        Property(3, 7, .property("3.6")),
+        Property(3, 8, .property("3.17", .operationalState)),
+        Property(3, 9, .property("3.11", .resetCause)),
+        Property(3, 10, .property("3.12")),
       ]),
     ],
     authorityKey: -0x000B5E,

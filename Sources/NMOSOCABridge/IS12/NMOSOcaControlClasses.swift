@@ -191,11 +191,9 @@ final class NMOSOcaControlClasses {
           presentation.properties[property.id] = .init(value: .constant(value), isReadOnly: true)
         case let .members(id):
           presentation.consumed.insert(id)
-        case let .property(id, transform, fallback):
-          guard let description = declared[id], description.getMethodID != nil else {
-            presentation.properties[property.id] = .init(value: .constant(fallback), isReadOnly: true)
-            continue
-          }
+        case let .property(id, transform):
+          // an object without the OCA property does without the standard one
+          guard let description = declared[id], description.getMethodID != nil else { continue }
           presentation.consumed.insert(id)
           presentation.standardIDs[id] = property.id
           presentation.properties[property.id] = NMOSOcaPropertyBinding(
