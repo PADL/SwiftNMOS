@@ -11,6 +11,7 @@ let package = Package(
   products: [
     .library(name: "NMOS", targets: ["NMOS"]),
     .library(name: "NMOSOCABridge", targets: ["NMOSOCABridge"]),
+    .library(name: "SwiftOCAClassManager", targets: ["SwiftOCAClassManager"]),
   ],
   traits: [
     .init(
@@ -35,11 +36,19 @@ let package = Package(
         .product(name: "Crypto", package: "swift-crypto"),
       ]
     ),
+    // a class manager for OCA, which AES70 lacks: its datatypes and its controller API
+    .target(
+      name: "SwiftOCAClassManager",
+      dependencies: [
+        .product(name: "SwiftOCA", package: "SwiftOCA"),
+      ]
+    ),
     // presents a SwiftOCADevice object model through the NMOS target
     .target(
       name: "NMOSOCABridge",
       dependencies: [
         "NMOS",
+        "SwiftOCAClassManager",
         .product(name: "SwiftOCA", package: "SwiftOCA"),
         .product(name: "SwiftOCADevice", package: "SwiftOCA"),
         .product(name: "FlyingFox", package: "FlyingFox"),
@@ -72,6 +81,7 @@ let package = Package(
       dependencies: [
         "NMOS",
         "NMOSOCABridge",
+        "SwiftOCAClassManager",
         .product(name: "SwiftOCA", package: "SwiftOCA"),
         .product(name: "SwiftOCADevice", package: "SwiftOCA"),
         .product(name: "Logging", package: "swift-log"),

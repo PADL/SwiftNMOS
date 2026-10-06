@@ -29,7 +29,16 @@ device manager's `Managers`, and the walk finds it among them; the mapping ancho
 `NcClassManager`. As its class adds nothing to OcaManager, it is presented as
 `NcClassManager` itself, whose methods and properties `NcObjectModel` answers for any
 object the source presents with that class. Nothing in the object model is special to
-its oid. The class has no methods of its own in OCA yet.
+its oid.
+
+To an OCA controller it describes the classes of the device's objects in OCA's terms:
+`GetControlClass(ClassID, IncludeInherited)` and `GetControlClasses()`, with descriptors
+(`OcaClassDescriptor` and its property, method and parameter descriptors) that
+correspond to MS-05-02's. They and the controller's `OcaClassManager` are in the
+`SwiftOCAClassManager` library, which knows nothing of NMOS; a controller calls
+`OcaClassManager.register()` to resolve the device's class manager to it. Its two
+methods are PADL's, so IS-12 describes them only with `DescribeVendorMethods`, and
+otherwise presents the class as `NcClassManager` exactly.
 
 ## The one exception: OcaRoot
 
