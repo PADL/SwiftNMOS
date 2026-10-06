@@ -15,6 +15,7 @@
 //
 
 import SwiftOCA
+import Synchronization
 
 /// Where the bridge keeps the user labels of objects that have no OCA label a controller
 /// can set, such as managers, or whose device will not change theirs. MS-05-02 has every
@@ -26,12 +27,12 @@ public protocol NMOSOcaLabelStore: Sendable {
 }
 
 /// Labels kept in memory, for as long as the process runs.
-public actor NMOSOcaMemoryLabelStore: NMOSOcaLabelStore {
-  private var labels = [OcaONo: String]()
+public final class NMOSOcaMemoryLabelStore: NMOSOcaLabelStore {
+  private let labels = Mutex([OcaONo: String]())
 
   public init() {}
 
-  public func label(of objectNumber: OcaONo) -> String? { labels[objectNumber] }
+  public func label(of objectNumber: OcaONo) -> String? { labels.withLock { $0[objectNumber] } }
 
-  public func setLabel(_ label: String?, of objectNumber: OcaONo) { labels[objectNumber] = label }
+  public func setLabel(_ label: String?, of objectNumber: OcaONo) { labels.withLock { $0[objectNumber] = label } }
 }
