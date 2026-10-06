@@ -45,6 +45,7 @@ public struct NcObjectIdentity: Sendable, Hashable {
   }
 
   public var isBlock: Bool { classID.starts(with: NcStandardModel.block) }
+  public var isClassManager: Bool { classID.starts(with: NcStandardModel.classManager) }
 }
 
 /// The objects an `NcObjectModel` is a model of. A source supplies each object's
@@ -113,22 +114,19 @@ public extension NcObjectSource {
 }
 
 /// An MS-05-02 device model over a source of objects. It implements the methods of
-/// `NcObject`, `NcBlock` and `NcClassManager`, and adds the class manager itself to
-/// the root block, so that a source only has to answer for its own objects.
+/// `NcObject` and `NcBlock`, and those of `NcClassManager` for the object the source
+/// presents as one, from the classes and datatypes the source describes.
 public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
   public static var rootOid: NcOid { 1 }
 
   public let source: Source
-  /// The oid of the class manager, which the source must not use for an object of its own.
-  public let classManagerOid: NcOid
 
   /// Where each open session's events go.
   private let listeners = Mutex([NcSession: AsyncStream<NcNotification>.Continuation]())
   private let descriptors = NcDescriptorCache()
 
-  public init(source: Source, classManagerOid: NcOid) {
+  public init(source: Source) {
     self.source = source
-    self.classManagerOid = classManagerOid
   }
 
   // MARK: - NcDeviceModel
@@ -153,12 +151,9 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
         return try await sequence(methodID.index, of: object, arguments, session)
       case (2, 1...4) where object.isBlock:
         return try await block(methodID.index, of: object, arguments, session)
-      case (3, 1...2) where oid == classManagerOid:
+      case (3, 1...2) where object.isClassManager:
         return try await classManager(methodID.index, arguments)
       default:
-        guard oid != classManagerOid else {
-          return .error(.methodNotImplemented, "No method \(methodID.level)m\(methodID.index)")
-        }
         return await source.invoke(
           oid: oid, methodID: methodID, arguments: arguments.values, session: session
         )
@@ -194,7 +189,7 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
   }
 
   public func subscriptionsChanged(to oids: Set<NcOid>, session: NcSession) async {
-    await source.subscriptionsChanged(to: oids.subtracting([classManagerOid]), session: session)
+    await source.subscriptionsChanged(to: oids, session: session)
   }
 
   public func sessionEnded(_ session: NcSession) async {
@@ -205,24 +200,15 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
   // MARK: - Objects
 
   private func identity(of oid: NcOid) async -> NcObjectIdentity? {
-    guard oid == classManagerOid else { return await source.identity(of: oid) }
-    return NcObjectIdentity(
-      classID: NcStandardModel.classManager,
-      oid: oid,
-      owner: Self.rootOid,
-      role: NcStandardModel.fixedRole(of: NcStandardModel.classManager) ?? "ClassManager"
-    )
+    await source.identity(of: oid)
   }
 
   private func members(of block: NcOid) async -> [NcOid] {
-    let members = await source.members(of: block)
-    return block == Self.rootOid ? members + [classManagerOid] : members
+    await source.members(of: block)
   }
 
   private func userLabel(of oid: NcOid, _ session: NcSession) async -> NcMethodResult {
-    // the class manager has no label, as it has nowhere to keep one across a restart
-    guard oid != classManagerOid else { return NcMethodResult(value: .null) }
-    return await source.get(.userLabel, of: oid, session: session)
+    await source.get(.userLabel, of: oid, session: session)
   }
 
   private func descriptor(
@@ -276,7 +262,6 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
     case (1, 6): return await userLabel(of: object.oid, session)
     case (1, 7): return NcMethodResult(value: object.touchpoints.map { .array($0.map(\.json)) } ?? .null)
     case (1, 8):
-      guard object.oid != classManagerOid else { return NcMethodResult(value: .null) }
       let constraints = await source.runtimeConstraints(of: object.oid, session: session)
       return NcMethodResult(value: constraints.isEmpty ? .null : .array(constraints))
     case (1, _): return Self.noProperty(property)
@@ -286,13 +271,10 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
     default:
       break
     }
-    guard object.oid == classManagerOid else {
-      return await source.get(property, of: object.oid, session: session)
-    }
     switch (property.level, property.index) {
-    case (3, 1): return await NcMethodResult(value: descriptorLists().classes)
-    case (3, 2): return await NcMethodResult(value: descriptorLists().datatypes)
-    default: return Self.noProperty(property)
+    case (3, 1) where object.isClassManager: return await NcMethodResult(value: descriptorLists().classes)
+    case (3, 2) where object.isClassManager: return await NcMethodResult(value: descriptorLists().datatypes)
+    default: return await source.get(property, of: object.oid, session: session)
     }
   }
 
@@ -304,8 +286,7 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
   ) async -> NcMethodResult {
     switch (property.level, property.index) {
     case (1, 6):
-      guard object.oid == classManagerOid else { break }
-      return Self.readOnly(property)
+      break
     case (1, 1...8):
       return Self.readOnly(property)
     case (1, _):
@@ -315,11 +296,10 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
     default:
       break
     }
-    guard object.oid == classManagerOid else {
-      return await source.set(property, of: object.oid, to: value, session: session)
+    if object.isClassManager, property.level == 3, (1...2).contains(property.index) {
+      return Self.readOnly(property)
     }
-    return property.level == 3 && (1...2).contains(property.index)
-      ? Self.readOnly(property) : Self.noProperty(property)
+    return await source.set(property, of: object.oid, to: value, session: session)
   }
 
   /// The sequence methods, 1m3 to 1m7, in terms of reading and writing the whole value.

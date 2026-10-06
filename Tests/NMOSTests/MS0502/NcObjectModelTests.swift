@@ -19,8 +19,8 @@ import NMOS
 import Synchronization
 import XCTest
 
-/// A small device: a root block holding a device manager, a block of two workers and
-/// a bare object. One worker is of a vendor class with a gain and a sequence of taps.
+/// A small device: a root block holding a device manager, a block of two workers, a
+/// bare object and the class manager, which has no label. One worker is of a vendor class with a gain and a sequence of taps.
 private final class FixtureObjectSource: NcObjectSource {
   static let vendorGain: NcClassID = [1, 2, 0, 1]
   static let gain = NcElementID(level: 3, index: 1)
@@ -57,7 +57,7 @@ private final class FixtureObjectSource: NcObjectSource {
       ))
     }
     objects = Mutex(Dictionary(uniqueKeysWithValues: [
-      object(1, NcStandardModel.block, "root", owner: nil, members: [2, 10, 20],
+      object(1, NcStandardModel.block, "root", owner: nil, members: [2, 10, 20, 99],
              properties: [Self.enabled: true], readOnly: [Self.enabled]),
       object(2, NcStandardModel.deviceManager, "DeviceManager", owner: 1),
       object(10, NcStandardModel.block, "channels", owner: 1, members: [11, 12],
@@ -68,6 +68,7 @@ private final class FixtureObjectSource: NcObjectSource {
              ]),
       object(12, NcStandardModel.worker, "Mute", owner: 10, properties: [Self.enabled: true]),
       object(20, NcStandardModel.object, "misc", owner: 1),
+      object(99, NcStandardModel.classManager, "ClassManager", owner: 1, readOnly: [.userLabel]),
     ]))
   }
 
@@ -149,7 +150,7 @@ final class NcObjectModelTests: XCTestCase {
 
   override func setUp() {
     source = FixtureObjectSource()
-    model = NcObjectModel(source: source, classManagerOid: 99)
+    model = NcObjectModel(source: source)
   }
 
   private func invoke(_ oid: NcOid, _ level: UInt16, _ index: UInt16, _ arguments: [String: NMOSJSONValue] = [:]) async -> NcMethodResult {
@@ -437,9 +438,9 @@ final class NcObjectModelTests: XCTestCase {
   func testOnlyObjectsThatExistCanBeSubscribedTo() async {
     let accepted = await model.subscribable([1, 11, 99, 4242], session: session)
     XCTAssertEqual(accepted, [1, 11, 99])
-    // the class manager is the model's own, so the source is not asked about it
+    // the class manager is the source's like any other object
     await model.subscriptionsChanged(to: [1, 99], session: session)
-    XCTAssertEqual(source.subscriptions.withLock { $0 }, [session: [1]])
+    XCTAssertEqual(source.subscriptions.withLock { $0 }, [session: [1, 99]])
   }
 
   func testChangesOfTheSourceAreNotified() async throws {
