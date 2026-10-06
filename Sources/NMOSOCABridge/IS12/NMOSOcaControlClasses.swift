@@ -246,7 +246,7 @@ final class NMOSOcaControlClasses {
   ) {
     let className = described.descriptor.name
     guard property.getMethodID != nil else {
-      logger.trace("\(className).\(property.name) has no getter, so it is not presented")
+      logger.trace("not presenting \(className).\(property.name): no getter")
       return
     }
     do {
@@ -279,7 +279,7 @@ final class NMOSOcaControlClasses {
         described.standardIDs[component.id] = id
       }
     } catch {
-      logger.trace("\(className).\(property.name) is not presented: \(error)")
+      logger.trace("not presenting \(className).\(property.name): \(error)")
     }
   }
 
@@ -293,7 +293,7 @@ final class NMOSOcaControlClasses {
     into described: inout ClassPresentation
   ) {
     let className = described.descriptor.name
-    for method in candidates(in: ocaClass, named: className) {
+    for method in candidates(in: ocaClass) {
       let id = NcElementID(level: level, index: method.methodID.methodIndex)
       assert(
         !NcStandardModel.methodIDs(of: anchor.nc).contains(id),
@@ -321,7 +321,7 @@ final class NMOSOcaControlClasses {
           id: id, name: method.name, resultDatatype: resultDatatype, parameters: descriptors, isDeprecated: false
         ))
       } catch {
-        logger.trace("\(className).\(method.name) is not presented: \(error)")
+        logger.trace("not presenting \(className).\(method.name): \(error)")
       }
     }
   }
@@ -329,21 +329,14 @@ final class NMOSOcaControlClasses {
   /// The methods of the class that are presented if their types can be described and the
   /// device lets the network call them, in index order. What the class itself declares
   /// decides which of its methods are presented, here and nowhere else.
-  private func candidates(
-    in ocaClass: OcaDeviceClassDescriptor,
-    named className: String
-  ) -> [OcaDeviceMethodDescriptor] {
+  private func candidates(in ocaClass: OcaDeviceClassDescriptor) -> [OcaDeviceMethodDescriptor] {
     let accessors = Set(ocaClass.properties.flatMap { [$0.getMethodID, $0.setMethodID] }.compactMap(\.self))
     // a subclass that declares a method again is the one it is dispatched to
     var methods = [OcaMethodID: OcaDeviceMethodDescriptor]()
     for method in ocaClass.methods { methods[method.methodID] = method }
     return methods.values.sorted { $0.methodID.methodIndex < $1.methodID.methodIndex }.filter { method in
       guard !accessors.contains(method.methodID) else { return false }
-      guard method.isDescribed else {
-        logger.trace("\(className).\(method.name) does not describe its parameters, so it is not presented")
-        return false
-      }
-      return true
+      return method.isDescribed
     }
   }
 

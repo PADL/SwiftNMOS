@@ -272,7 +272,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     guard !isEndpointRegistered else { return }
     isEndpointRegistered = true
     do { try await device.add(endpoint: endpoint) } catch {
-      logger.error("the device would not take the NMOS control endpoint, so no events will arrive: \(error)")
+      logger.error("not receiving events: the device refused the NMOS control endpoint: \(error)")
     }
     do { _ = try await OcaClassManager.shared(on: device) } catch {
       logger.error("the device would not take the class manager: \(error)")

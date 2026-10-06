@@ -89,7 +89,7 @@ public final class NMOSOcaBridge: Sendable {
   /// `hostChanged()` is called, until the task is cancelled.
   public func run() async throws {
     guard await device.deviceManager != nil else {
-      logger.error("the OCA device has no device manager, so it cannot be described to NMOS")
+      logger.error("not describing the OCA device to NMOS: no device manager")
       return
     }
     let (requests, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))

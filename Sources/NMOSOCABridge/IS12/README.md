@@ -77,7 +77,7 @@ A class that adds only methods to its anchor is presented as a class derived fro
 one that adds a property is (`NMOSOcaControlClasses.isPresentedAsDerivedClass`). A debug
 assertion checks that no presented method takes the ID of a standard method of the anchor's lineage.
 
-A method is left out, and the reason logged at trace level, when:
+A method is left out when:
 
 - its ID is the getter or setter of one of the class's properties (`Get`/`Set` serve it);
 - it does not describe its parameters (`isDescribed` is false, as for `SetResetKey`);
