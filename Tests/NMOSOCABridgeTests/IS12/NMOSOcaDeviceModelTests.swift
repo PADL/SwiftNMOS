@@ -374,7 +374,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     XCTAssertEqual(properties[2]["isReadOnly"], true)
 
     XCTAssertEqual(
-      NMOSOcaControlClasses.fields(below: TrimmedGain.classID), [1, 1, 5, padl, 1]
+      TrimmedGain.classID.ncIndices, [1, 1, 5, padl, 1]
     )
   }
 
@@ -401,9 +401,9 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let setting = await get(toggle.objectNumber, 6, 1)
     XCTAssertEqual(setting.value, false)
 
-    XCTAssertEqual(NMOSOcaControlClasses.classIDs(from: "1.1.1", to: "1.1.1.1.1"), ["1.1.1.1"])
-    XCTAssertEqual(NMOSOcaControlClasses.classIDs(from: "1.1.1", to: TrimmedGain.classID), ["1.1.1.5"])
-    XCTAssertEqual(NMOSOcaControlClasses.classIDs(from: "1.1.1.5", to: TrimmedGain.classID), [])
+    XCTAssertEqual(OcaClassID("1.1.1.1.1").classIDs(after: "1.1.1"), ["1.1.1.1"])
+    XCTAssertEqual(TrimmedGain.classID.classIDs(after: "1.1.1"), ["1.1.1.5"])
+    XCTAssertEqual(TrimmedGain.classID.classIDs(after: "1.1.1.5"), [])
   }
 
   @OcaDevice
@@ -415,7 +415,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     XCTAssertGreaterThan(managers.count, 3)
     XCTAssertEqual(Set(classIDs).count, classIDs.count, "\(classIDs)")
     // NcManager is only a base: a manager with nothing of its own to present is still
-    // a class of its own, with its role fixed
+    // a class derived from the standard one, with its role fixed
     XCTAssertFalse(classIDs.contains(NcStandardModel.manager.json))
     let subscriptions = try XCTUnwrap(managers.first { $0["oid"] == .integer(Int64(OcaSubscriptionManagerONo)) })
     let classID = try XCTUnwrap(subscriptions["classId"].flatMap(NcClassID.init(json:)))

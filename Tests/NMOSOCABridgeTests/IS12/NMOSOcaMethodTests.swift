@@ -384,11 +384,11 @@ final class NMOSOcaMethodTests: XCTestCase {
       // the deepest class of the lineage that has a standard counterpart
       let anchors = lineage.lazy.compactMap { type in mapping.anchors.first { $0.oca == type.classID } }
       let anchor = try XCTUnwrap(anchors.first)
-      let standard = NMOSOcaControlClasses.standardMethods(under: anchor.nc)
+      let standard = NcStandardModel.methodIDs(of: anchor.nc)
       for method in type.deviceMethods where method.methodID.defLevel > 1 {
         let definer = try XCTUnwrap(lineage.first { $0.classID.defLevel == method.methodID.defLevel })
         let id = NcElementID(
-          level: NMOSOcaControlClasses.level(of: definer.classID, under: anchor.nc),
+          level: definer.classID.ncLevel(under: anchor.nc),
           index: method.methodID.methodIndex
         )
         XCTAssertGreaterThan(id.level, anchor.nc.ncLevel, "\(type).\(method.name)")

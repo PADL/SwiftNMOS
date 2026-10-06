@@ -148,17 +148,17 @@ final class NMOSOcaControlClasses {
 
     // what the OCA classes have beyond that, one non-standard class per OCA class
     var descriptors = [NcClassDescriptor]()
-    for (depth, ocaClass) in Self.presented(lineage) {
+    for (depth, ocaClass) in lineage.presented {
       // a class ID names every class above it, and each is to be described, whether or
       // not a class of the object stands for it
-      for unstated in Self.classIDs(from: lineage[depth - 1].classID, to: ocaClass.classID) {
+      for unstated in ocaClass.classID.classIDs(after: lineage[depth - 1].classID) {
         descriptors.append(NcClassDescriptor(
-          classID: anchor.nc + [mapping.authorityKey] + Self.fields(below: unstated),
-          name: Self.name(of: unstated)
+          classID: anchor.nc + [mapping.authorityKey] + unstated.ncIndices,
+          name: unstated.className
         ))
       }
       // a class's level is its depth by its ID, as OCA has it too
-      let level = Self.level(of: ocaClass.classID, under: anchor.nc)
+      let level = ocaClass.classID.ncLevel(under: anchor.nc)
       let described = describe(
         ocaClass: ocaClass, at: level, under: anchor, consumed: presentation.consumed
       )
@@ -226,8 +226,8 @@ final class NMOSOcaControlClasses {
     consumed: Set<OcaPropertyID>
   ) -> ClassPresentation {
     var described = ClassPresentation(descriptor: NcClassDescriptor(
-      classID: anchor.nc + [mapping.authorityKey] + Self.fields(below: ocaClass.classID),
-      name: Self.name(of: ocaClass.type)
+      classID: anchor.nc + [mapping.authorityKey] + ocaClass.classID.ncIndices,
+      name: ocaClass.type.className
     ))
     // (a vector is listed once, under the ID of its x component)
     for property in ocaClass.properties where !consumed.contains(property.propertyID) {
@@ -296,7 +296,7 @@ final class NMOSOcaControlClasses {
     for method in candidates(in: ocaClass, named: className) {
       let id = NcElementID(level: level, index: method.methodID.methodIndex)
       assert(
-        !Self.standardMethods(under: anchor.nc).contains(id),
+        !NcStandardModel.methodIDs(of: anchor.nc).contains(id),
         "\(className).\(method.name) would be presented as a standard method, \(id)"
       )
       do {
@@ -360,7 +360,7 @@ final class NMOSOcaControlClasses {
     label: OcaDevicePropertyDescriptor?,
     role: String
   ) -> NMOSOcaControlClass {
-    guard Self.isClassOfItsOwn(under: anchor.nc, descriptors), var leaf = descriptors.last else {
+    guard Self.isPresentedAsDerivedClass(under: anchor.nc, descriptors), var leaf = descriptors.last else {
       return NMOSOcaControlClass(
         classID: anchor.nc, properties: presentation.properties, methods: presentation.methods,
         standardIDs: presentation.standardIDs, label: label, descriptors: []
@@ -378,75 +378,13 @@ final class NMOSOcaControlClasses {
     )
   }
 
-  /// The classes of a lineage whose elements, properties and methods alike, are presented:
-  /// all but OcaRoot. NcObject owns level 1, so OcaRoot's elements would take the IDs of
-  /// NcObject's (and, under a deeper anchor, the anchor's own); they are served by NcObject.
-  static func presented(
-    _ lineage: [OcaDeviceClassDescriptor]
-  ) -> some Sequence<(offset: Int, element: OcaDeviceClassDescriptor)> {
-    lineage.enumerated().dropFirst()
-  }
-
-  /// MS-05-02's own methods of a standard class and of the standard classes above it,
-  /// which the object model answers before the bridge is asked.
-  static func standardMethods(under anchor: NcClassID) -> Set<NcElementID> {
-    let lineage = anchor.indices.compactMap { NcStandardModel.classDescriptor(Array(anchor[...$0])) }
-    return Set(lineage.flatMap(\.methods).map(\.id))
-  }
-
-  /// The MS-05-02 level an OCA class's elements are presented at under an anchor:
-  /// N + L − 1, N being the anchor's level and L the class's OCA level.
-  static func level(of classID: OcaClassID, under anchor: NcClassID) -> UInt16 {
-    anchor.ncLevel + fields(below: classID).ncLevel
-  }
-
-  /// Whether a lineage is presented as a class of its own: one that adds a property or a
-  /// method to the standard class; or any manager, as NcManager is only a base and each
-  /// manager is the one object of its class.
-  static func isClassOfItsOwn(under anchor: NcClassID, _ descriptors: [NcClassDescriptor]) -> Bool {
+  /// Whether a lineage is presented as a class derived from the standard one rather than as
+  /// the standard class: one that adds a property or a method to it; or any manager, as
+  /// NcManager is only a base and each manager is the one object of its class.
+  private static func isPresentedAsDerivedClass(
+    under anchor: NcClassID,
+    _ descriptors: [NcClassDescriptor]
+  ) -> Bool {
     anchor == NcStandardModel.manager || descriptors.contains { !$0.properties.isEmpty || !$0.methods.isEmpty }
-  }
-
-  /// The OCA class ID's fields after the leading 1, as MS-05-02 class indices. OCA's
-  /// proprietary marker and the two fields of its authority become that authority's key.
-  static func fields(below classID: OcaClassID) -> NcClassID {
-    let fields = classID.fields.map { Int32($0) }.dropFirst()
-    var indices = NcClassID()
-    var index = fields.startIndex
-    while index < fields.endIndex {
-      if fields[index] == 0xFFFF, index + 2 < fields.endIndex {
-        indices.append(-((fields[index + 1] & 0xFF) << 16 | fields[index + 2]))
-        index += 3
-      } else {
-        indices.append(fields[index])
-        index += 1
-      }
-    }
-    return indices
-  }
-
-  /// The classes `classID` names between itself and `ancestor`, nearest the ancestor first.
-  static func classIDs(from ancestor: OcaClassID, to classID: OcaClassID) -> [OcaClassID] {
-    var between = [OcaClassID]()
-    var parent = classID.parent
-    while let id = parent, id != ancestor, id.isSubclass(of: ancestor) {
-      between.insert(id, at: 0)
-      parent = id.parent
-    }
-    return between
-  }
-
-  /// The name of a class known only by its ID: the registered class of that ID, if any.
-  private static func name(of classID: OcaClassID) -> String {
-    if let type = try? OcaDeviceClassRegistry.shared.match(classID: classID), type.classID == classID {
-      return name(of: type)
-    }
-    return "OcaClass" + classID.fields.map { String($0) }.joined(separator: "_")
-  }
-
-  /// The class's name without its generic arguments; `Nc` is the standard's to use.
-  private static func name(of type: SwiftOCADevice.OcaRoot.Type) -> String {
-    let name = String(String(describing: type).prefix { $0 != "<" })
-    return name.hasPrefix("Nc") ? "Oca" + name : name
   }
 }

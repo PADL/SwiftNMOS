@@ -42,7 +42,7 @@ MS-05-02's.
 
 ## The one exception: OcaRoot
 
-OcaRoot's elements are not presented (`NMOSOcaControlClasses.presented`). NcObject owns
+OcaRoot's elements are not presented (`presented`, on a lineage). NcObject owns
 level 1: OcaRoot's properties are NcObject's (class ID and role; the lock state has no
 counterpart), and OcaRoot's seven methods, 1.1 to 1.7, would take the IDs of NcObject's
 `Get`, `Set` and the sequence methods under an NcObject anchor, or of the anchor's own
@@ -73,9 +73,9 @@ result by a struct derived from `NcMethodResult`, named for the class and the me
 (`OcaWorkerGetPortNameResult`), whose one field is `value` for a method with one result, or
 a field per result under its OCP.2 name for several. A method with no results returns
 `NcMethodResult` itself. `isDeprecated` is false, as SwiftOCA has nothing to say otherwise.
-A class that adds only methods to its anchor is a class of its own, as one that adds a
-property is (`NMOSOcaControlClasses.isClassOfItsOwn`). A debug assertion checks that no
-presented method takes the ID of a standard method of the anchor's lineage.
+A class that adds only methods to its anchor is presented as a class derived from it, as
+one that adds a property is (`NMOSOcaControlClasses.isPresentedAsDerivedClass`). A debug
+assertion checks that no presented method takes the ID of a standard method of the anchor's lineage.
 
 A method is left out, and the reason logged at trace level, when:
 
