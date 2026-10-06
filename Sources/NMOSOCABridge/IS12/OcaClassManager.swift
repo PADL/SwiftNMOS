@@ -66,25 +66,11 @@ public final class OcaClassManager: SwiftOCADevice.OcaManager {
     return described
   }
 
-  /// Every object reachable from the root block, and the managers.
+  /// Every object registered with the device. Taken in object number order only so that
+  /// repeated calls agree; GetControlClasses promises no order.
   private func objects() async -> [SwiftOCADevice.OcaRoot] {
-    guard let device = deviceDelegate, let root = await device.rootBlock else { return [] }
-    var found: [SwiftOCADevice.OcaRoot] = [root]
-    if let deviceManager = await device.deviceManager {
-      for manager in deviceManager.managers {
-        if let object: SwiftOCADevice.OcaRoot = await device.resolve(objectNumber: manager.objectNumber) {
-          found.append(object)
-        }
-      }
-    }
-    var index = 0
-    while index < found.count {
-      if let block = found[index] as? any OcaBlockContainer {
-        found += block.actionObjects
-      }
-      index += 1
-    }
-    return found
+    guard let device = deviceDelegate else { return [] }
+    return await device.objects.sorted { $0.key < $1.key }.map(\.value)
   }
 
   /// `oca` described with the elements of `classes`, which are it and, if asked for,

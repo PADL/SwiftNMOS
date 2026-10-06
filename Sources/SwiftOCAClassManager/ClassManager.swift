@@ -45,7 +45,8 @@ open class OcaClassManager: OcaManager, @unchecked Sendable {
   @OcaMethod("3.1", name: "GetControlClass", parameters: GetControlClassParameters.self, resultNames: ["Descriptor"])
   public func getControlClass(classID: OcaClassID, includeInherited: OcaBoolean) async throws -> OcaClassDescriptor
 
-  /// Every class of the device's objects, each with only its own elements.
+  /// Every class of the device's objects, each once and with only its own elements, in
+  /// no particular order.
   @OcaMethod("3.2", name: "GetControlClasses", resultNames: ["Descriptors"])
   public func getControlClasses() async throws -> [OcaClassDescriptor]
 
