@@ -116,7 +116,7 @@ private final class FixedMidpointPan: SwiftOCADevice.OcaPanBalance {
   }
 }
 
-/// An agent nothing of which is for a controller on the network, its label included.
+/// An agent the device will not let a controller on the network read, its label included.
 private final class SealedAgent: SwiftOCADevice.OcaAgent {
   override class var classID: OcaClassID {
     OcaClassID(parent: super.classID, authority: OcaOrganizationID((0x0A, 0xE9, 0x1B)), 10)
@@ -484,16 +484,16 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   }
 
   @OcaDevice
-  func testALabelTheSessionCannotReadCannotBeSet() async throws {
+  func testWhetherALabelIsReadIsTheDevicesToDecide() async throws {
     let sealed = try await SealedAgent(role: "Sealed", deviceDelegate: OcaDevice.shared, addToRootBlock: false)
     sealed.label = "Private"
     try await Fixture.block.add(actionObject: sealed)
-    // the object is there, as an object with nothing of OCA's to show
-    let unlabelled = await get(sealed.objectNumber, 1, 6)
-    XCTAssertEqual(unlabelled, NcMethodResult(value: .null))
+    // the label is the OCA label, which the device refuses to read but lets be written
+    let refused = await get(sealed.objectNumber, 1, 6)
+    XCTAssertEqual(refused.status, .unauthorized)
     let written = await set(sealed.objectNumber, 1, 6, "Mine")
-    XCTAssertEqual(written.status, .readonly)
-    XCTAssertEqual(sealed.label, "Private")
+    XCTAssertEqual(written.status, .ok)
+    XCTAssertEqual(sealed.label, "Mine")
   }
 
   @OcaDevice
@@ -530,7 +530,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
 
     // what only a local controller may write is described as it is to the network
     let agent = try await classDescriptor([1, aes, 2, Fixture.padl, 9])
-    XCTAssertEqual(agent["properties"]?.arrayValue?.map { $0["isReadOnly"] }, [true])
+    XCTAssertEqual(agent["properties"]?.arrayValue?.map { $0["isReadOnly"] }, [true, true])
     // and what the network may write is unchanged by having been asked about
     let gain = try await classDescriptor([1, 2, aes, 1, 1, 5])
     XCTAssertEqual(gain["properties"]?.arrayValue?.map { $0["isReadOnly"] }, [false])
@@ -631,7 +631,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   }
 
   /// What nmos-testing checks of a device model: every property a class descriptor
-  /// lists can be read, and its value is of the type the descriptor names.
+  /// lists is of the type the descriptor names, where the device lets it be read.
   @OcaDevice
   func testEveryPropertyReadsAsItsDescriptorSays() async throws {
     Fixture.trimmed.routing = [1: [OcaPortID(mode: .input, index: 2)]]
@@ -652,6 +652,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
         let id = try XCTUnwrap(property["id"].flatMap(NcElementID.init(json:)))
         let name = "\(descriptor["name"]?.stringValue ?? "?").\(property["name"]?.stringValue ?? "?") of \(oid)"
         let result = await get(oid, id.level, id.index)
+        if result.status == .unauthorized { continue }
         XCTAssertEqual(result.status, .ok, "\(name): \(result.errorMessage ?? "")")
         guard let value = result.value else { XCTFail("\(name) has no value"); continue }
         XCTAssertNil(
@@ -713,11 +714,11 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   func testASessionIsTheControllerItsPeerIsAndNeverTheBridge() async throws {
     let agent = Fixture.localOnly.objectNumber
     let (aes, padl) = (Fixture.aes, Fixture.padl)
-    // what only a local controller may read is not presented at all
+    // what only a local controller may read is presented, and the device refuses it
     let descriptor = try await classDescriptor([1, aes, 2, padl, 9])
-    XCTAssertEqual(descriptor["properties"]?.arrayValue?.map { $0["name"] }, ["setting"])
+    XCTAssertEqual(descriptor["properties"]?.arrayValue?.map { $0["name"] }, ["secret", "setting"])
     let secret = await get(agent, 3, 1)
-    XCTAssertEqual(secret.status, .propertyNotImplemented)
+    XCTAssertEqual(secret.status, .unauthorized)
     XCTAssertNil(secret.value)
     let stolen = await set(agent, 3, 1, "mine")
     XCTAssertTrue(stolen.status.isError)

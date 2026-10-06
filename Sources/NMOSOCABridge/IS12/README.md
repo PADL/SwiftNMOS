@@ -109,6 +109,9 @@ Decisions:
 - Property accessors are not methods: a table method whose ID is the getter or setter of
   an `@OcaDeviceProperty` is served by the property (`Get`/`Set`). A getter the device
   declares only as a method, such as OcaLevelSensor's `GetReading`, is a method.
+- A property with a getter is described whether or not the device lets the session read
+  it. Whether to answer a `Get` is the device's to decide, on each request: its
+  `PermissionDenied` is the session's `Unauthorized`.
 - `OcaONo`-typed parameters and results are presented as the raw AES70 object numbers,
   as `OcaONo` properties already are; an oid differs only for the root block and the
   device manager.

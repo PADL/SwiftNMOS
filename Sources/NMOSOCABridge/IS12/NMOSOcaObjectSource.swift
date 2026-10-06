@@ -320,9 +320,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// How the object's class is presented, worked out the first time one is met.
   private func controlClass(of object: SwiftOCADevice.OcaRoot, role: String) async -> NMOSOcaControlClass {
     let describer = await describer()
-    return await classes.controlClass(of: object, role: role) { binding in
-      await !self.read(binding, of: object, as: describer).status.isError
-    } writable: { property, schema in
+    return await classes.controlClass(of: object, role: role) { property, schema in
       await self.isWritable(property, schema: schema, of: object, as: describer)
     }
   }
