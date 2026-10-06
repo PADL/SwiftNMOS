@@ -89,7 +89,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   private var sessions = [NcSession: Session]()
   /// Where the device finds the sessions' controllers.
   let endpoint = NMOSOcaControlEndpoint()
-  private var isEndpointRegistered = false
+  /// Giving the device the endpoint and the class manager, which every caller waits for.
+  private var registration: Task<Void, Never>?
   /// The bridge's own controller. It reads properties to see whether they can be
   /// presented, with no privilege, so that what it can read any session can; and it
   /// hears from the blocks and the device manager when the tree of objects changes.
@@ -133,7 +134,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// The device holds the endpoint, and through it every subscription of the sessions'
   /// controllers and the bridge's own; they go with it.
   deinit {
-    guard isEndpointRegistered else { return }
+    guard registration != nil else { return }
     let device = device, endpoint = endpoint
     Task { @OcaDevice in try? await device.remove(endpoint: endpoint) }
   }
@@ -275,14 +276,17 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   }
 
   private func registerEndpoint() async {
-    guard !isEndpointRegistered else { return }
-    isEndpointRegistered = true
-    do { try await device.add(endpoint: endpoint) } catch {
-      logger.error("not receiving events: the device refused the NMOS control endpoint: \(error)")
+    if let registration { return await registration.value }
+    let registration = Task { @OcaDevice [device, endpoint, logger] in
+      do { try await device.add(endpoint: endpoint) } catch {
+        logger.error("not receiving events: the device refused the NMOS control endpoint: \(error)")
+      }
+      do { _ = try await OcaClassManager.shared(on: device) } catch {
+        logger.error("not presenting the class manager: the device refused it: \(error)")
+      }
     }
-    do { _ = try await OcaClassManager.shared(on: device) } catch {
-      logger.error("the device would not take the class manager: \(error)")
-    }
+    self.registration = registration
+    await registration.value
   }
 
   public func identity(of oid: NcOid) async -> NcObjectIdentity? {
@@ -434,7 +438,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     // an OCA getter refuses to return nil, which here is simply a null value
     if status == .parameterOutOfRange { return NcMethodResult(value: .null) }
     guard status == .ok else {
-      return .error(Self.status(status), "Reading \(description.name) failed: \(status)")
+      return .error(status.ncStatus(.get), "Reading \(description.name) failed: \(status)")
     }
 
     do {
@@ -493,7 +497,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
         guard let getter = property.getMethodID else { return .error(.readonly, "The property is read only") }
         let (status, pair) = await send(getter, to: object, as: controller)
         guard status == .ok, let pair else {
-          return .error(Self.status(status), "Reading \(property.name) failed: \(status)")
+          return .error(status.ncStatus(.get), "Reading \(property.name) failed: \(status)")
         }
         parameters = pair
         parameters[field] = try classes.datatypes.oca(from: value, as: schema).ocp2
@@ -505,12 +509,10 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       return .error(.readonly, "The property is read only")
     }
     let (status, _) = await send(setter, to: object, parameters, as: controller)
-    switch status {
-    case .ok: return NcMethodResult()
-    // OCA's ways of saying a property that has a setter may not be set
-    case .permissionDenied, .notImplemented: return .error(.readonly, "\(description.name) cannot be written")
-    default: return .error(Self.status(status), "Writing \(description.name) failed: \(status)")
+    guard status == .ok else {
+      return .error(status.ncStatus(.set), "Writing \(description.name) failed: \(status)")
     }
+    return NcMethodResult()
   }
 
   // MARK: - Methods
@@ -553,7 +555,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     }
     let (status, answer) = await send(method.methodID, to: object, parameters, as: controller)
     guard status == .ok else {
-      return .error(Self.status(status), "Method \(method.methodID) failed: \(status)")
+      return .error(status.ncStatus(.invoke), "Method \(method.methodID) failed: \(status)")
     }
     do {
       var results = [String: NMOSJSONValue]()
@@ -589,22 +591,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   }
 
   /// `NcMethodStatus` for an OCA status that is not `ok`.
-  private static func status(_ status: OcaStatus) -> NcMethodStatus {
-    switch status {
-    case .ok, .partiallySucceeded: .ok
-    case .locked: .locked
-    case .badFormat, .parameterError, .parameterOutOfRange: .parameterError
-    case .badONo: .badOid
-    case .notImplemented, .badMethod: .methodNotImplemented
-    case .invalidRequest: .invalidRequest
-    case .timeout: .timeout
-    case .bufferOverflow, .outOfMemory: .bufferOverflow
-    case .permissionDenied: .unauthorized
-    case .busy: .notReady
-    case .protocolVersionError: .badCommandFormat
-    case .deviceError, .processingFailed: .deviceError
-    }
-  }
 
   // MARK: - Classes
 
@@ -787,5 +773,37 @@ final class NMOSOcaControlEndpoint: OcaDeviceEndpoint {
 
   var controllers: [any OcaController] {
     get async { sessions.withLock { $0 } }
+  }
+}
+
+/// What a command to an OCA object was sent for, which decides what not implemented means.
+private enum NMOSOcaAccess {
+  case get, set, invoke
+}
+
+private extension OcaStatus {
+  /// The MS-05-02 status of an OCA command's status, the one mapping the bridge uses.
+  func ncStatus(_ access: NMOSOcaAccess) -> NcMethodStatus {
+    switch self {
+    case .ok: .ok
+    case .locked: .locked
+    case .badFormat, .parameterError, .parameterOutOfRange: .parameterError
+    case .badONo: .badOid
+    case .notImplemented, .badMethod:
+      switch access {
+      // the Get method is there; it is the property's getter that is not
+      case .get: .propertyNotImplemented
+      // a setter that is declared but not implemented: the property cannot be set
+      case .set: .readonly
+      case .invoke: .methodNotImplemented
+      }
+    case .invalidRequest: .invalidRequest
+    case .timeout: .timeout
+    case .bufferOverflow, .outOfMemory: .bufferOverflow
+    case .permissionDenied: .unauthorized
+    case .busy: .notReady
+    case .protocolVersionError: .badCommandFormat
+    case .deviceError, .processingFailed, .partiallySucceeded: .deviceError
+    }
   }
 }

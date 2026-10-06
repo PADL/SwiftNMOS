@@ -84,10 +84,13 @@ final class NMOSOcaControlClasses {
     self.logger = logger
   }
 
+  /// Each class once: where descriptors share a class ID, as a class named only by another's
+  /// ID does with its own descriptor, the one with the most elements.
   private func listDescriptors() -> [NcClassDescriptor] {
-    var seen = Set<NcClassID>()
-    return classes.values.flatMap(\.descriptors).filter { seen.insert($0.classID).inserted }
-      .sorted { $0.classID.lexicographicallyPrecedes($1.classID) }
+    let byClass = Dictionary(classes.values.flatMap(\.descriptors).map { ($0.classID, $0) }) { first, second in
+      first.properties.count + first.methods.count >= second.properties.count + second.methods.count ? first : second
+    }
+    return byClass.values.sorted { $0.classID.lexicographicallyPrecedes($1.classID) }
   }
 
   func controlClass(

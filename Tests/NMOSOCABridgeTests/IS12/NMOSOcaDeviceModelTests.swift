@@ -576,7 +576,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     // but an object whose device refuses to change its OCA label keeps it
     let fixed = Fixture.fixed.objectNumber
     let renamed = await set(fixed, 1, 6, "Mine")
-    XCTAssertEqual(renamed.status, .readonly)
+    XCTAssertEqual(renamed.status, .unauthorized)
     let factory = await get(fixed, 1, 6)
     XCTAssertEqual(factory.value, "Factory")
 
@@ -719,13 +719,13 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let setting = await get(agent, 3, 2)
     XCTAssertEqual(setting.value, "factory")
     let refused = await set(agent, 3, 2, "remote")
-    XCTAssertEqual(refused.status, .readonly)
+    XCTAssertEqual(refused.status, .unauthorized)
     XCTAssertEqual(Fixture.localOnly.setting, "factory")
     for peer in [NcSession.Peer.ip("127.0.0.1", port: 50001), .ip("::1", port: 50002)] as [NcSession.Peer?] + [nil] {
       // an address is never proof of being local, the host's own included
       let other = NcSession(peer: peer)
       let refused = await set(agent, 3, 2, "loopback", as: other)
-      XCTAssertEqual(refused.status, .readonly)
+      XCTAssertEqual(refused.status, .unauthorized)
       await model.sessionEnded(other)
     }
     XCTAssertEqual(Fixture.localOnly.setting, "factory")

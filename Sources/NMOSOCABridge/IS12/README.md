@@ -109,8 +109,8 @@ Decisions:
   it. Whether to answer a `Get` is the device's to decide, on each request: its
   `PermissionDenied` is the session's `Unauthorized`.
 - A property is read only exactly when it has no setter. One with a setter is described
-  as writable, and the device may still refuse a `Set`: its `PermissionDenied` or
-  `NotImplemented` is the session's `Readonly`.
+  as writable, and the device may still refuse a `Set`: its `PermissionDenied` is the
+  session's `Unauthorized`, and `NotImplemented` its `Readonly`.
 - `OcaONo`-typed parameters and results are presented as the raw AES70 object numbers,
   as `OcaONo` properties already are; an oid differs only for the root block and the
   device manager.
