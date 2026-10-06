@@ -135,23 +135,19 @@ final class NMOSOcaDatatypes {
     if let raw = type as? any RawRepresentable.Type {
       return try schema(of: Self.rawType(of: raw))
     }
-    guard let decodable = type as? any Decodable.Type else {
+    guard type is any Codable.Type else {
       throw NMOSOcaUnsupportedType(type, "not Codable")
     }
 
-    let probe = NMOSOcaProbe()
-    _ = try NMOSOcaProbe.value(decodable, recording: probe)
-    if let single = probe.single {
-      return try schema(of: single)
-    }
-    guard !probe.fields.isEmpty, !probe.isIrregular else {
+    // a struct whose coding is synthesised is coded as its stored properties; one that
+    // codes otherwise is a primitive above, or has a field MS-05-02 cannot describe
+    let fields = Ocp2Encoder.fields(of: type)
+    guard !fields.isEmpty else {
       throw NMOSOcaUnsupportedType(type, "not a struct of named fields")
     }
     let name = try name(for: type)
-    try define(structure: name, fields: probe.fields.map { field in
-      let schema = try schema(of: field.type)
-      let isOptional = if case .optional = schema { true } else { false }
-      return (Ocp2Encoder.fieldName(field.key), field.isOptional && !isOptional ? .optional(schema) : schema)
+    try define(structure: name, fields: fields.map { field in
+      try (Ocp2Encoder.fieldName(field.name), schema(of: field.type))
     })
     return .structure(name)
   }
