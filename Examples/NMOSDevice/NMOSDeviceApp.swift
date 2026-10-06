@@ -26,10 +26,10 @@ import Darwin
 import Glibc
 #endif
 
-/// An AES70 device with mock AES67 and Dante transports, served as an NMOS node: IS-04
-/// (registration, or peer-to-peer), IS-05 for both transports and IS-12. OCP.1 and
-/// OCP.2 share the HTTP port with the NMOS APIs, as WebSocket subprotocols, and OCP.1
-/// is also served over TCP.
+/// An AES70 device with a mixer and mock AES67 and Dante transports, served as an NMOS
+/// node: IS-04 (registration, or peer-to-peer), IS-05 for both transports and IS-12.
+/// OCP.1 and OCP.2 share the HTTP port with the NMOS APIs, as WebSocket subprotocols,
+/// and OCP.1 is also served over TCP.
 ///
 ///     NMOSDevice [--port 8080] [--oca-port 65000] [--registry URL | --peer-to-peer]
 ///                [--receivers 4] [--senders 4]
@@ -99,8 +99,8 @@ enum NMOSDeviceApp {
     try await serve(on: interface, options: options, logger: logger)
   }
 
-  /// The device's objects: a network interface standing for the host's, and the two
-  /// transport applications on it.
+  /// The device's objects: a mixer, a network interface standing for the host's, and
+  /// the two transport applications on it.
   @OcaDevice
   private static func makeDevice(on host: HostInterface, options: Options) async throws {
     let device = OcaDevice.shared
@@ -109,6 +109,8 @@ enum NMOSDeviceApp {
     let name = String(ProcessInfo.processInfo.hostName.prefix { $0 != "." }.prefix(31))
     let deviceManager = await device.deviceManager
     deviceManager?.deviceName = name.isEmpty ? "NMOSDevice" : name
+
+    try await Mixer.make(channels: max(options.receivers, 1), device: device)
 
     let networkManager = try await SwiftOCADevice.OcaNetworkManager(deviceDelegate: device)
     let interface = try await SwiftOCADevice.OcaNetworkInterface(role: "Interface", deviceDelegate: device)
