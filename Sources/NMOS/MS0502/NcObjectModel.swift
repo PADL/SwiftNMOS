@@ -122,8 +122,7 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
   /// The oid of the class manager, which the source must not use for an object of its own.
   public let classManagerOid: NcOid
 
-  private let classManagerLabel = Mutex<String?>(nil)
-  /// Where each open session's events go; the class manager's own are put there too.
+  /// Where each open session's events go.
   private let listeners = Mutex([NcSession: AsyncStream<NcNotification>.Continuation]())
   private let descriptors = NcDescriptorCache()
 
@@ -221,9 +220,8 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
   }
 
   private func userLabel(of oid: NcOid, _ session: NcSession) async -> NcMethodResult {
-    guard oid != classManagerOid else {
-      return NcMethodResult(value: classManagerLabel.withLock { $0 }.json)
-    }
+    // the class manager has no label, as it has nowhere to keep one across a restart
+    guard oid != classManagerOid else { return NcMethodResult(value: .null) }
     return await source.get(.userLabel, of: oid, session: session)
   }
 
@@ -307,14 +305,7 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
     switch (property.level, property.index) {
     case (1, 6):
       guard object.oid == classManagerOid else { break }
-      guard value.isNull || value.stringValue != nil else {
-        return .error(.parameterError, "A user label is a string or null")
-      }
-      classManagerLabel.withLock { $0 = value.stringValue }
-      let eventData = NcPropertyChangedEventData(propertyID: property, value: value)
-      let notification = NcNotification(oid: object.oid, eventData: eventData.json)
-      for listener in listeners.withLock({ Array($0.values) }) { listener.yield(notification) }
-      return NcMethodResult()
+      return Self.readOnly(property)
     case (1, 1...8):
       return Self.readOnly(property)
     case (1, _):

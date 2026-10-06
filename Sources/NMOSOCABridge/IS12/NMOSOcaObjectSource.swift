@@ -100,8 +100,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   private(set) var walks = 0
   /// The walk under way, which a second session that needs one waits for.
   private var walking: Task<Void, Never>?
-  /// The user labels of objects that have no OCA label, or will not have theirs changed.
-  private var labels = [NcOid: String]()
   private nonisolated let listeners = Mutex([NcSession: AsyncStream<NcNotification>.Continuation]())
 
   /// How long an oid that is not in the tree is taken not to exist. A block says what
@@ -369,7 +367,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     guard let entry = await entry(oid) else { return .error(.badOid, "No object with oid \(oid)") }
     let controlClass = await controlClass(of: entry.object, role: entry.role)
     if property == .userLabel {
-      if let kept = labels[oid] { return NcMethodResult(value: .string(kept)) }
       guard let label = controlClass.label else { return NcMethodResult(value: .null) }
       let binding = NMOSOcaPropertyBinding(value: .property(label, .string, .identity), isReadOnly: false)
       return await read(binding, of: entry.object, as: controller)
@@ -424,21 +421,13 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       guard value.isNull || value.stringValue != nil else {
         return .error(.parameterError, "A user label is a string or null")
       }
-      // MS-05-02 has every object's label writable. An object without an OCA label, or
-      // whose device fixes it, has the label kept here instead; any other failure, such
-      // as a lock, is the session's error, as it is for any property.
-      var written = NcMethodResult(status: .readonly)
-      if let label = controlClass.label {
-        let binding = NMOSOcaPropertyBinding(value: .property(label, .string, .identity), isReadOnly: false)
-        written = await write(binding, of: entry.object, value, as: controller)
+      // the label is the OCA label: an object without one a controller can set (a
+      // manager) refuses, as nothing here could keep its label across a restart
+      guard let label = controlClass.label else {
+        return .error(.readonly, "\(entry.role) has no user label that can be set")
       }
-      if written.status == .readonly {
-        labels[oid] = value.stringValue
-        result = NcMethodResult()
-      } else {
-        if !written.status.isError { labels[oid] = nil }
-        result = written
-      }
+      let binding = NMOSOcaPropertyBinding(value: .property(label, .string, .identity), isReadOnly: false)
+      result = await write(binding, of: entry.object, value, as: controller)
     } else if let binding = controlClass.properties[property] {
       // what the class is described as, every object of it keeps to; and the classes
       // that share its ID have all to have been met before that is known

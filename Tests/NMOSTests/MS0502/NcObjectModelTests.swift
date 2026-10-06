@@ -442,22 +442,18 @@ final class NcObjectModelTests: XCTestCase {
     XCTAssertEqual(source.subscriptions.withLock { $0 }, [session: [1]])
   }
 
-  func testChangesOfTheSourceAndOfTheClassManagerAreNotified() async throws {
+  func testChangesOfTheSourceAreNotified() async throws {
     var notifications = model.notifications(for: session).makeAsyncIterator()
+    // the class manager has no label to change, as it could not keep one
     let label = await set(99, 1, 6, "Classes")
-    XCTAssertEqual(label, NcMethodResult())
-    let first = await notifications.next()
-    XCTAssertEqual(first?.oid, 99)
-    XCTAssertEqual(first?.eventData, NcPropertyChangedEventData(propertyID: .userLabel, value: "Classes").json)
+    XCTAssertEqual(label.status, .readonly)
     let read = await get(99, 1, 6)
-    XCTAssertEqual(read.value, "Classes")
+    XCTAssertEqual(read.value, .null)
 
     _ = await set(11, 3, 1, 1.0)
-    let second = await notifications.next()
-    XCTAssertEqual(second?.oid, 11)
-    XCTAssertEqual(second?.eventData["propertyId"], Source.gain.json)
-    let rejected = await set(99, 1, 6, 5)
-    XCTAssertEqual(rejected.status, .parameterError)
+    let first = await notifications.next()
+    XCTAssertEqual(first?.oid, 11)
+    XCTAssertEqual(first?.eventData["propertyId"], Source.gain.json)
 
     // a session that ends has its events end, and the source hears of it
     await model.sessionEnded(session)
