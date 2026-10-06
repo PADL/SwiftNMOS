@@ -573,18 +573,12 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     XCTAssertEqual(rejected.status, .parameterError)
     _ = await set(manager, 1, 6, .null)
 
-    // and for an object whose device will not have its label changed
+    // but an object whose device refuses to change its OCA label keeps it
     let fixed = Fixture.fixed.objectNumber
+    let renamed = await set(fixed, 1, 6, "Mine")
+    XCTAssertEqual(renamed.status, .readonly)
     let factory = await get(fixed, 1, 6)
     XCTAssertEqual(factory.value, "Factory")
-    let renamed = await set(fixed, 1, 6, "Mine")
-    XCTAssertEqual(renamed.status, .ok)
-    XCTAssertEqual(Fixture.fixed.label, "Factory")
-    let kept = await get(fixed, 1, 6)
-    XCTAssertEqual(kept.value, "Mine")
-    _ = await set(fixed, 1, 6, .null)
-    let restored = await get(fixed, 1, 6)
-    XCTAssertEqual(restored.value, "Factory")
 
     // but a lock is the session's error, and leaves the label as it is
     let locked = Fixture.locked.objectNumber

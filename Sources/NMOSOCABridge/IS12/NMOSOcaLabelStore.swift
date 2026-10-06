@@ -18,8 +18,8 @@ import SwiftOCA
 import Synchronization
 
 /// Where the bridge keeps the user labels of objects that have no OCA label a controller
-/// can set, such as managers, or whose device will not change theirs. MS-05-02 has every
-/// object's label writable, and has it persist across a restart, which a host's store can.
+/// can set, such as managers. MS-05-02 has every object's label writable, and has it
+/// persist across a restart, which a host's store can.
 public protocol NMOSOcaLabelStore: Sendable {
   func label(of objectNumber: OcaONo) async -> String?
   /// Keeps `label` for the object, or forgets the object's label if it is nil.

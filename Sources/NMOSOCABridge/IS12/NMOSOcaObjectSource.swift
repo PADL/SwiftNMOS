@@ -337,8 +337,9 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     guard let entry = await entry(oid) else { return .error(.badOid, "No object with oid \(oid)") }
     let controlClass = classes.controlClass(of: entry.object, role: entry.role)
     if property == .userLabel {
-      if let kept = await labels.label(of: entry.object.objectNumber) { return NcMethodResult(value: .string(kept)) }
-      guard let label = controlClass.label else { return NcMethodResult(value: .null) }
+      guard let label = controlClass.label else {
+        return NcMethodResult(value: await labels.label(of: entry.object.objectNumber).map { .string($0) } ?? .null)
+      }
       let binding = NMOSOcaPropertyBinding(value: .property(label, .string), isReadOnly: false)
       return await read(binding, of: entry.object, as: controller)
     }
@@ -392,20 +393,15 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       guard value.isNull || value.stringValue != nil else {
         return .error(.parameterError, "A user label is a string or null")
       }
-      // MS-05-02 has every object's label writable. An object without an OCA label, or
-      // whose device will not change it, has the label kept in the label store instead;
-      // any other failure, such as a lock, is the session's error.
-      var written = NcMethodResult(status: .readonly)
+      // MS-05-02 has every object's label writable: one without an OCA label a controller
+      // can set has it kept in the label store. Where there is an OCA label, what the
+      // device says to writing it, a refusal included, is the session's answer.
       if let label = controlClass.label {
         let binding = NMOSOcaPropertyBinding(value: .property(label, .string), isReadOnly: false)
-        written = await write(binding, of: entry.object, value, as: controller)
-      }
-      if written.status == .readonly {
+        result = await write(binding, of: entry.object, value, as: controller)
+      } else {
         await labels.setLabel(value.stringValue, of: entry.object.objectNumber)
         result = NcMethodResult()
-      } else {
-        if !written.status.isError { await labels.setLabel(nil, of: entry.object.objectNumber) }
-        result = written
       }
     } else if let binding = controlClass.properties[property] {
       result = await write(binding, of: entry.object, value, as: controller)
