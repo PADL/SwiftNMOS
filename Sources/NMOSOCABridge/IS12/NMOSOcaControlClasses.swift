@@ -313,10 +313,6 @@ final class NMOSOcaControlClasses {
         described.methods[id] = NMOSOcaMethodBinding(
           methodID: method.methodID, parameters: parameters, results: results
         )
-        guard Self.describesMethods(of: ocaClass.classID) else {
-          logger.trace("\(className).\(method.name) is a vendor method, so it is callable but not described")
-          continue
-        }
         let resultDatatype = try datatypes.methodResult(named: className + method.name + "Result", fields: fields)
         described.descriptor.methods.append(NcMethodDescriptor(
           id: id, name: method.name, resultDatatype: resultDatatype, parameters: descriptors, isDeprecated: false
@@ -346,17 +342,6 @@ final class NMOSOcaControlClasses {
       }
       return true
     }
-  }
-
-  /// Whether the methods a class declares are described. A vendor's, one of a class under a
-  /// proprietary authority, may be called as OCP.1 and OCP.2 allow, but are described only
-  /// in a build with the DescribeVendorMethods trait.
-  static func describesMethods(of classID: OcaClassID) -> Bool {
-    #if DescribeVendorMethods
-    true
-    #else
-    !fields(below: classID).contains { $0 < 0 }
-    #endif
   }
 
   private func field(_ parameter: OcaParameterDescriptor) throws -> NMOSOcaMethodBinding.Field {

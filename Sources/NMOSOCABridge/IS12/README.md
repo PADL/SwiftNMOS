@@ -36,9 +36,9 @@ To an OCA controller it describes the classes of the device's objects in OCA's t
 (`OcaClassDescriptor` and its property, method and parameter descriptors) that
 correspond to MS-05-02's. They and the controller's `OcaClassManager` are in the
 `SwiftOCAClassManager` library, which knows nothing of NMOS; a controller calls
-`OcaClassManager.register()` to resolve the device's class manager to it. Its two
-methods are PADL's, so IS-12 describes them only with `DescribeVendorMethods`, and
-otherwise presents the class as `NcClassManager` exactly.
+`OcaClassManager.register()` to resolve the device's class manager to it. IS-12
+presents it as a class derived from `NcClassManager`, with its two OCA methods beside
+MS-05-02's.
 
 ## The one exception: OcaRoot
 
@@ -97,9 +97,7 @@ and access checks; the bridge decodes nothing itself. The OCA status maps to an
 
 A vendor's classes may declare their own methods with `@OcaDeviceMethod` too, so they may
 be invoked by the same rules, under the vendor's authority key, as they may over OCP.1
-and OCP.2. They are not described, though, unless the package is built with the
-`DescribeVendorMethods` trait (`NMOSOcaControlClasses.describesMethods`); a vendor
-class's properties are described either way. Which of a class's methods are candidates is
+and OCP.2, and are described as the standard classes' are. Which of a class's methods are candidates is
 decided in one place, `NMOSOcaControlClasses.candidates`.
 
 Decisions:

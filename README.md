@@ -33,11 +33,6 @@ and OCP.1 is also served over TCP on `--oca-port` (65000), for `ocacli -h localh
 Without `--peer-to-peer` it looks for a registry by DNS-SD, or uses the one `--registry`
 names. `--port`, `--receivers` and `--senders` set the port and the number of each.
 
-## Traits
-
-- `DescribeVendorMethods`: describe a vendor's methods over IS-12. They may be called by
-  their IDs either way.
-
 ## Tools
 
 `scripts/nmos/` has `nmosctl.py`, a standard-library client for IS-04, IS-05 and IS-12

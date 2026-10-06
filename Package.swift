@@ -13,12 +13,6 @@ let package = Package(
     .library(name: "NMOSOCABridge", targets: ["NMOSOCABridge"]),
     .library(name: "SwiftOCAClassManager", targets: ["SwiftOCAClassManager"]),
   ],
-  traits: [
-    .init(
-      name: "DescribeVendorMethods",
-      description: "Describe vendor methods over IS-12, which are callable regardless"
-    ),
-  ],
   dependencies: [
     .package(url: "https://github.com/PADL/SwiftOCA", branch: "main"),
     .package(url: "https://github.com/swhitty/FlyingFox", from: "0.26.2"),

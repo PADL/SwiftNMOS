@@ -232,15 +232,10 @@ final class NMOSOcaMethodTests: XCTestCase {
   }
 
   @OcaDevice
-  func testAVendorMethodIsCallableButOnlyDescribedWithTheTrait() async throws {
+  func testAVendorMethodIsDescribedAndCallable() async throws {
     let descriptor = try await classDescriptor(of: MethodFixture.dial)
     let methods = descriptor["methods"]?.arrayValue ?? []
-    #if DescribeVendorMethods
     XCTAssertTrue(methods.contains { $0["name"] == "GetTurns" })
-    #else
-    XCTAssertFalse(methods.contains { $0["name"] == "GetTurns" })
-    #endif
-    // its properties are described either way
     let properties = descriptor["properties"]?.arrayValue ?? []
     XCTAssertTrue(properties.contains { $0["name"] == "position" })
 
