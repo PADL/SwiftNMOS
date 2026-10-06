@@ -20,6 +20,26 @@ An AES70 element defined at AES70 level **L** is presented at level **N + L − 
 MS-05-02's own rule, the level of the defining class counted without authority keys,
 applied to the class IDs above. It holds for properties and methods alike.
 
+## The class manager
+
+AES70 has no class manager, so the bridge adds one to the device: `OcaClassManager`, an
+OCA manager of PADL's (class `1.3.<PADL>.1`, object number 4095, the last AES70
+reserves). It is registered with the device like any manager, so it is listed in the
+device manager's `Managers`, and the walk finds it among them; the mapping anchors it to
+`NcClassManager`. As its class adds nothing to OcaManager, it is presented as
+`NcClassManager` itself, whose methods and properties `NcObjectModel` answers for any
+object the source presents with that class. Nothing in the object model is special to
+its oid.
+
+To an OCA controller it describes the classes of the device's objects in OCA's terms:
+`GetControlClass(ClassID, IncludeInherited)` and `GetControlClasses()`, with descriptors
+(`OcaClassDescriptor` and its property, method and parameter descriptors) that
+correspond to MS-05-02's. They and the controller's `OcaClassManager` are in the
+`SwiftOCAClassManager` library, which knows nothing of NMOS; a controller calls
+`OcaClassManager.register()` to resolve the device's class manager to it. Its two
+methods are PADL's, so IS-12 describes them only with `DescribeVendorMethods`, and
+otherwise presents the class as `NcClassManager` exactly.
+
 ## The one exception: OcaRoot
 
 OcaRoot's elements are not presented (`NMOSOcaControlClasses.presented`). NcObject owns
@@ -33,8 +53,8 @@ and a session must not be able to lock objects against AES70 controllers.
 ## Standard methods take precedence by structure
 
 `NcObjectModel` answers every standard method itself before asking the source: NcObject's
-`1m1`–`1m7` for every object, NcBlock's `2m1`–`2m4` for a block, NcClassManager's for its
-oid. With OcaRoot excluded, every presented AES70 class has L ≥ 2 and so every AES70
+`1m1`–`1m7` for every object, NcBlock's `2m1`–`2m4` for a block, NcClassManager's for the
+class manager. With OcaRoot excluded, every presented AES70 class has L ≥ 2 and so every AES70
 method lands at level N + 1 or below, under every standard class in the lineage; no
 renumbering is needed, and no method is excluded by name or by class. Checked over every
 method table in SwiftOCADevice and in one vendor device: the only collisions are OcaRoot's, and

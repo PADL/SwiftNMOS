@@ -39,10 +39,12 @@ public extension NcObjectModel where Source == NMOSOcaObjectSource {
     self.init(
       source: NMOSOcaObjectSource(
         device: device, mapping: mapping, adaptations: adaptations, logger: logger, resourceIDs: resourceIDs
-      ),
-      classManagerOid: mapping.classManagerOid
+      )
     )
   }
+
+  /// Where the class manager is, which is where the bridge makes it.
+  var classManagerOid: NcOid { OcaClassManager.objectNumber }
 }
 
 /// The objects of an OCA device, presented as the mapping says. Properties are read and
@@ -160,6 +162,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     guard let root = await device.rootBlock, let deviceManager = await device.deviceManager else {
       return
     }
+    // the class manager is one of the managers listed below, so it is made first
+    await registerEndpoint()
     let changes = changes
     walks += 1
     var managers: [SwiftOCADevice.OcaRoot] = [deviceManager]
@@ -270,9 +274,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     do { try await device.add(endpoint: endpoint) } catch {
       logger.error("the device would not take the NMOS control endpoint, so no events will arrive: \(error)")
     }
-    let hidden: SwiftOCADevice.OcaRoot? = await device.resolve(objectNumber: mapping.classManagerOid)
-    if hidden != nil {
-      logger.error("object number \(mapping.classManagerOid) is in use, so the class manager hides an object")
+    do { _ = try await OcaClassManager.shared(on: device) } catch {
+      logger.error("the device would not take the class manager: \(error)")
     }
   }
 

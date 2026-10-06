@@ -94,8 +94,6 @@ public struct NMOSOcaControlMapping: Sendable {
   /// MS-05-02 fixes the root block's oid and role; OCA numbers its device manager 1.
   public var rootRole: String
   public var oids: [OcaONo: NcOid]
-  /// The class manager has no OCA object; this must be an object number OCA never uses.
-  public var classManagerOid: NcOid
 
   /// The oid an OCA object is presented under.
   public func oid(of objectNumber: OcaONo) -> NcOid { oids[objectNumber] ?? objectNumber }
@@ -121,6 +119,7 @@ public struct NMOSOcaControlMapping: Sendable {
         Property(3, 1, .property("4.1", fallback: false)),
       ]),
       Anchor("1.3", NcStandardModel.manager),
+      Anchor(OcaClassManager.classID, NcStandardModel.classManager),
       Anchor("1.3.1", NcStandardModel.deviceManager, [
         Property(3, 1, .constant(.string(NcStandardModel.version))),
         Property(3, 2, .property("3.15", .manufacturer, fallback: ["name": "", "organizationId": .null, "website": .null])),
@@ -141,8 +140,7 @@ public struct NMOSOcaControlMapping: Sendable {
     ownerProperty: "owner",
     managersProperty: "managers",
     rootRole: "root",
-    oids: [OcaRootBlockONo: NcObjectModel<NMOSOcaObjectSource>.rootOid, OcaDeviceManagerONo: OcaRootBlockONo],
-    classManagerOid: OcaMaximumReservedONo
+    oids: [OcaRootBlockONo: NcObjectModel<NMOSOcaObjectSource>.rootOid, OcaDeviceManagerONo: OcaRootBlockONo]
   )
 }
 
