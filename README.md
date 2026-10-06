@@ -17,6 +17,21 @@ An [AMWA NMOS](https://specs.amwa.tv/nmos/) node in Swift, and a bridge that pre
 The specifications followed are IS-04 v1.3, IS-05 v1.1 and v1.2, IS-12 v1.0 and
 MS-05-02 v1.0.
 
+## Example
+
+`Examples/NMOSDevice` is an AES70 device with mock AES67 and Dante transports, served as
+an NMOS node. The transports move no audio, but behave as a device's would when patched,
+so IS-04, IS-05 (`urn:x-nmos:transport:rtp` and `urn:x-nmos:transport:dante`) and IS-12
+can all be exercised. OCP.1 and OCP.2 share its HTTP port, as WebSocket subprotocols.
+
+    swift run NMOSDevice --peer-to-peer
+    scripts/nmos/nmosctl.py --url http://localhost:8080 list receivers
+    scripts/nmos/nmosctl.py --url http://localhost:8080 connect RECEIVER_ID SENDER_ID
+    scripts/nmos/nmosctl.py --url http://localhost:8080 ncp tree
+
+Without `--peer-to-peer` it looks for a registry by DNS-SD, or uses the one `--registry`
+names. `--port`, `--receivers` and `--senders` set the port and the number of each.
+
 ## Traits
 
 - `DescribeVendorMethods`: describe a vendor's methods over IS-12. They may be called by

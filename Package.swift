@@ -47,6 +47,18 @@ let package = Package(
       ],
       exclude: ["IS12/README.md"]
     ),
+    // an AES70 device with mock AES67 and Dante transports, served as an NMOS node
+    .executableTarget(
+      name: "NMOSDevice",
+      dependencies: [
+        "NMOS",
+        "NMOSOCABridge",
+        .product(name: "SwiftOCA", package: "SwiftOCA"),
+        .product(name: "SwiftOCADevice", package: "SwiftOCA"),
+        .product(name: "Logging", package: "swift-log"),
+      ],
+      path: "Examples/NMOSDevice"
+    ),
     .testTarget(
       name: "NMOSTests",
       dependencies: [
