@@ -174,7 +174,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     }
 
     // every object's class is described as it is found, the root block's here
-    _ = await controlClass(of: root, role: mapping.rootRole)
+    _ = classes.controlClass(of: root, role: mapping.rootRole)
     var pending: [(object: SwiftOCADevice.OcaRoot, owner: NcOid?, role: String)] =
       [(root, nil, mapping.rootRole)]
     var claimed: Set<NcOid> = [mapping.oid(of: root.objectNumber)]
@@ -211,7 +211,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   private func nmosRole(of child: SwiftOCADevice.OcaRoot, oid: NcOid, among roles: inout Set<String>) async -> String {
     var role = child.role.replacingOccurrences(of: ".", with: "_")
     // the class is described as it is found, under the role it was found with
-    let classID = await controlClass(of: child, role: role).classID
+    let classID = classes.controlClass(of: child, role: role).classID
     if let fixed = NcStandardModel.fixedRole(of: classID) { role = fixed }
     if !roles.insert(role).inserted {
       role += "_\(oid)"
@@ -282,7 +282,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   public func identity(of oid: NcOid) async -> NcObjectIdentity? {
     guard let entry = await entry(oid) else { return nil }
     return await NcObjectIdentity(
-      classID: controlClass(of: entry.object, role: entry.role).classID,
+      classID: classes.controlClass(of: entry.object, role: entry.role).classID,
       oid: oid,
       owner: entry.owner,
       role: entry.role,
@@ -317,11 +317,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     return touchpoints.isEmpty ? nil : touchpoints
   }
 
-  /// How the object's class is presented, worked out the first time one is met.
-  private func controlClass(of object: SwiftOCADevice.OcaRoot, role: String) async -> NMOSOcaControlClass {
-    await classes.controlClass(of: object, role: role)
-  }
-
   // MARK: - Properties
 
   public func get(_ property: NcElementID, of oid: NcOid, session: NcSession) async -> NcMethodResult {
@@ -334,10 +329,10 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     as controller: NMOSOcaControlController
   ) async -> NcMethodResult {
     guard let entry = await entry(oid) else { return .error(.badOid, "No object with oid \(oid)") }
-    let controlClass = await controlClass(of: entry.object, role: entry.role)
+    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
     if property == .userLabel {
       guard let label = controlClass.label else { return NcMethodResult(value: .null) }
-      let binding = NMOSOcaPropertyBinding(value: .property(label, .string, .identity), isReadOnly: false)
+      let binding = NMOSOcaPropertyBinding(value: .property(label, .string), isReadOnly: false)
       return await read(binding, of: entry.object, as: controller)
     }
     guard let binding = controlClass.properties[property] else {
@@ -351,12 +346,12 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   public func runtimeConstraints(of oid: NcOid, session: NcSession) async -> [NMOSJSONValue] {
     guard let entry = await entry(oid) else { return [] }
     let controller = await controller(for: session)
-    let controlClass = await controlClass(of: entry.object, role: entry.role)
+    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
     var constraints = [NMOSJSONValue]()
     let properties = controlClass.properties.sorted { ($0.key.level, $0.key.index) < ($1.key.level, $1.key.index) }
     for (id, binding) in properties {
       // a bounded property's getter names its value, then its lower and upper bounds
-      guard case let .property(description, schema?, .identity) = binding.value,
+      guard case let .property(description, schema?, .none) = binding.value,
             description.ocp2GetNames.count == 3, schema.isNumber, let getter = description.getMethodID
       else { continue }
       let (status, answer) = await send(getter, to: entry.object, as: controller)
@@ -384,7 +379,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   ) async -> NcMethodResult {
     let controller = await controller(for: session)
     guard let entry = await entry(oid) else { return .error(.badOid, "No object with oid \(oid)") }
-    let controlClass = await controlClass(of: entry.object, role: entry.role)
+    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
     let result: NcMethodResult
     if property == .userLabel {
       guard value.isNull || value.stringValue != nil else {
@@ -395,7 +390,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       guard let label = controlClass.label else {
         return .error(.readonly, "\(entry.role) has no user label that can be set")
       }
-      let binding = NMOSOcaPropertyBinding(value: .property(label, .string, .identity), isReadOnly: false)
+      let binding = NMOSOcaPropertyBinding(value: .property(label, .string), isReadOnly: false)
       result = await write(binding, of: entry.object, value, as: controller)
     } else if let binding = controlClass.properties[property] {
       result = await write(binding, of: entry.object, value, as: controller)
@@ -439,7 +434,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
         // the getter answers with the pair; this property is one member of it
         guard let answer = parameters?[field] else { throw NMOSOcaMissingAnswer() }
         return try NcMethodResult(value: classes.datatypes.standard(from: NMOSJSONValue(ocp2: answer), as: schema))
-      case let .property(_, schema, transform):
+      case let .property(_, schema, standardForm):
         // a getter answers with named parameters; a record's fields name themselves
         var answer: Any? = parameters
         if let name = description.ocp2GetNames.first {
@@ -448,9 +443,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
         }
         guard let answer else { throw NMOSOcaMissingAnswer() }
         let oca = try NMOSJSONValue(ocp2: answer)
-        guard case .identity = transform, let schema else {
-          return NcMethodResult(value: transform.standardValue(from: oca))
-        }
+        if let standardForm { return NcMethodResult(value: standardForm.standardValue(from: oca)) }
+        guard let schema else { return NcMethodResult(value: oca) }
         return try NcMethodResult(value: classes.datatypes.standard(from: oca, as: schema))
       }
     } catch {
@@ -519,7 +513,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     session: NcSession
   ) async -> NcMethodResult {
     guard let entry = await entry(oid) else { return .error(.badOid, "No object with oid \(oid)") }
-    let controlClass = await controlClass(of: entry.object, role: entry.role)
+    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
     guard let method = controlClass.methods[methodID] else {
       return .error(.methodNotImplemented, "No method \(methodID.level)m\(methodID.index)")
     }
@@ -689,7 +683,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// nor sends the session's controller anything else, such as OcaLevelSensor's own 4.1.
   private func subscriptions(to oid: NcOid) async -> [OcaSubscriptionManagerSubscription] {
     guard let entry = await entry(oid) else { return [] }
-    let controlClass = await controlClass(of: entry.object, role: entry.role)
+    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
     return controlClass.standardIDs.keys.map { property in
       .propertyChangeSubscription2(OcaPropertyChangeSubscription2(
         emitter: entry.object.objectNumber, property: property,
@@ -702,7 +696,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   private func changed(_ property: OcaPropertyID, of objectNumber: OcaONo, session: NcSession) async {
     let oid = mapping.oid(of: objectNumber)
     guard sessions[session]?.subscribed.contains(oid) == true, let entry = await entry(oid) else { return }
-    let controlClass = await controlClass(of: entry.object, role: entry.role)
+    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
     guard let id = controlClass.standardIDs[property] else { return }
     await changed(id, of: oid, session: session)
   }

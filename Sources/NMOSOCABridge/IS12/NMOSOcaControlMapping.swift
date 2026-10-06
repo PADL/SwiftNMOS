@@ -37,25 +37,12 @@ import SwiftOCADevice
 /// alone is not presented, as level 1 is NcObject's; methods follow the same rule as
 /// properties, so no OCA method can take a standard method's ID (see README.md here).
 public struct NMOSOcaControlMapping: Sendable {
-  /// How an OCA value becomes the value of a standard property, and back.
-  public enum Transform: Sendable {
-    /// The same value, marshalled as the property's OCA type describes.
-    case identity
-    /// `OcaManufacturer` as `NcManufacturer`.
-    case manufacturer
-    /// `OcaProduct` as `NcProduct`.
-    case product
-    /// `OcaDeviceOperationalState` as `NcDeviceOperationalState`.
-    case operationalState
-    /// `OcaResetCause` as `NcResetCause`.
-    case resetCause
-  }
-
   /// Where the value of a standard property comes from.
   public enum Source: Sendable {
     case constant(NMOSJSONValue)
-    /// An OCA property of the object.
-    case property(OcaPropertyID, Transform = .identity)
+    /// An OCA property of the object; one of a type with a standard form of its own
+    /// (`NMOSOcaStandardValue`) is presented in that form.
+    case property(OcaPropertyID)
     /// A block's members, which the object model lists from the OCA property named.
     case members(OcaPropertyID)
   }
@@ -122,14 +109,14 @@ public struct NMOSOcaControlMapping: Sendable {
       Anchor(OcaClassManager.classID, NcStandardModel.classManager),
       Anchor("1.3.1", NcStandardModel.deviceManager, [
         Property(3, 1, .constant(.string(NcStandardModel.version))),
-        Property(3, 2, .property("3.15", .manufacturer)),
-        Property(3, 3, .property("3.16", .product)),
+        Property(3, 2, .property("3.15")),
+        Property(3, 3, .property("3.16")),
         Property(3, 4, .property("3.2")),
         Property(3, 5, .property("3.7")),
         Property(3, 6, .property("3.4")),
         Property(3, 7, .property("3.6")),
-        Property(3, 8, .property("3.17", .operationalState)),
-        Property(3, 9, .property("3.11", .resetCause)),
+        Property(3, 8, .property("3.17")),
+        Property(3, 9, .property("3.11")),
         Property(3, 10, .property("3.12")),
       ]),
     ],
@@ -140,53 +127,4 @@ public struct NMOSOcaControlMapping: Sendable {
     rootRole: "root",
     oids: [OcaRootBlockONo: NcObjectModel<NMOSOcaObjectSource>.rootOid, OcaDeviceManagerONo: OcaRootBlockONo]
   )
-}
-
-extension NMOSOcaControlMapping.Transform {
-  /// The standard value from the OCP.2 form of the OCA value.
-  func standardValue(from oca: NMOSJSONValue) -> NMOSJSONValue {
-    func text(_ name: String) -> NMOSJSONValue { .string(oca[name]?.stringValue ?? "") }
-    func optionalText(_ name: String) -> NMOSJSONValue {
-      guard let value = oca[name]?.stringValue, !value.isEmpty else { return .null }
-      return .string(value)
-    }
-
-    switch self {
-    case .identity:
-      return oca
-    case .manufacturer:
-      // an organisation ID is three octets, written in hexadecimal
-      let organization = oca["OrganizationID"]?.stringValue.flatMap { Int64($0, radix: 16) }
-      return [
-        "name": text("Name"),
-        "organizationId": organization.flatMap { $0 == 0 ? nil : .integer($0) } ?? .null,
-        "website": optionalText("Website"),
-      ]
-    case .product:
-      return [
-        "name": text("Name"), "key": text("ModelID"), "revisionLevel": text("RevisionLevel"),
-        "brandName": optionalText("BrandName"), "uuid": optionalText("UUID"),
-        "description": optionalText("Description"),
-      ]
-    case .operationalState:
-      // OcaDeviceGenericState to NcDeviceGenericState; an OCA fault is an internal error
-      let generic: Int64 = switch oca["Generic"]?.integerValue {
-      case 0: 1
-      case 1: 2
-      case 2: 3
-      case 3: 5
-      default: 0
-      }
-      return ["generic": .integer(generic), "deviceSpecificDetails": .null]
-    case .resetCause:
-      // OcaResetCause counts from power-on at 0; NcResetCause keeps 0 for unknown
-      guard let cause = oca.integerValue, (0...3).contains(cause) else { return 0 }
-      return .integer(cause + 1)
-    }
-  }
-
-  /// Whether a controller's value can be handed to the OCA setter as it is.
-  var isWritable: Bool {
-    if case .identity = self { true } else { false }
-  }
 }

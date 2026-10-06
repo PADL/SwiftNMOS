@@ -27,7 +27,9 @@ struct NMOSOcaPropertyBinding: Sendable {
   enum Value: Sendable {
     case constant(NMOSJSONValue)
     /// An OCA property, read and written through its accessor methods.
-    case property(OcaDevicePropertyDescriptor, NMOSOcaSchema?, NMOSOcaControlMapping.Transform)
+    /// An OCA property, read and written through its accessor methods; one of a standard
+    /// property may be presented in a standard form of its type's own.
+    case property(OcaDevicePropertyDescriptor, NMOSOcaSchema?, (any NMOSOcaStandardValue.Type)? = nil)
     /// One component of an OCA vector property, by the name of its field in the pair
     /// the property's accessors carry.
     case component(OcaDevicePropertyDescriptor, field: String, NMOSOcaSchema)
@@ -191,14 +193,15 @@ final class NMOSOcaControlClasses {
           presentation.properties[property.id] = .init(value: .constant(value), isReadOnly: true)
         case let .members(id):
           presentation.consumed.insert(id)
-        case let .property(id, transform):
+        case let .property(id):
           // an object without the OCA property does without the standard one
           guard let description = declared[id], description.getMethodID != nil else { continue }
           presentation.consumed.insert(id)
           presentation.standardIDs[id] = property.id
+          let standardForm = description.valueType as? any NMOSOcaStandardValue.Type
           presentation.properties[property.id] = NMOSOcaPropertyBinding(
-            value: .property(description, try? datatypes.schema(of: description.valueType), transform),
-            isReadOnly: isReadOnly || !description.isSettable || !transform.isWritable
+            value: .property(description, try? datatypes.schema(of: description.valueType), standardForm),
+            isReadOnly: isReadOnly || !description.isSettable || standardForm != nil
           )
         }
       }
@@ -259,7 +262,7 @@ final class NMOSOcaControlClasses {
         }
       } else {
         schema = try datatypes.schema(of: property.valueType)
-        components = [(property.name, property.propertyID, .property(property, schema, .identity))]
+        components = [(property.name, property.propertyID, .property(property, schema))]
       }
       let reference = try datatypes.reference(to: schema)
       // a setter is no promise: the device may still refuse a set when it is made
