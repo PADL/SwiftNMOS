@@ -61,11 +61,13 @@ public extension NcObjectModel where Source == NMOSOcaObjectSource {
 public final class NMOSOcaObjectSource: NcObjectSource {
   public typealias ResourceIDs = @Sendable () async -> NMOSOcaResourceIDs?
 
+  /// An object of the tree, which is the root block, a manager, or an object owned by a
+  /// block of the tree. Its role is its OCA role as MS-05-02 allows one, before it is
+  /// told apart from a sibling's.
   private struct Entry {
     let object: SwiftOCADevice.OcaRoot
     let owner: NcOid?
     let role: String
-    let members: [NcOid]
   }
 
   /// A control session as the device sees it, and what it has been told so far.
@@ -91,28 +93,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   let endpoint = NMOSOcaControlEndpoint()
   /// Giving the device the endpoint and the class manager, which every caller waits for.
   private var registration: Task<Void, Never>?
-  /// The bridge's own controller. It reads properties to see whether they can be
-  /// presented, with no privilege, so that what it can read any session can; and it
-  /// hears from the blocks and the device manager when the tree of objects changes.
-  private var observer: NMOSOcaControlController?
-  private var observed = Set<OcaONo>()
-  /// The properties whose change is a change to the tree: members and managers.
-  private var structural = Set<OcaPropertyID>()
   private var handle: OcaUint32 = 0
-  private var index = [NcOid: Entry]()
-  /// When the tree was last walked; nil when it has changed since, or never was.
-  private var indexed: ContinuousClock.Instant?
-  private var changes = 0
-  /// How many times the tree has been walked.
-  private(set) var walks = 0
-  /// The walk under way, which a second session that needs one waits for.
-  private var walking: Task<Void, Never>?
   private nonisolated let listeners = Mutex([NcSession: AsyncStream<NcNotification>.Continuation]())
-
-  /// How long an oid that is not in the tree is taken not to exist. A block says what
-  /// it contains a moment after it contains it, but a walk for every unknown oid would
-  /// let anyone who asks for them keep the device busy.
-  private static let indexLifetime = Duration.seconds(1)
 
   nonisolated init(
     device: OcaDevice,
@@ -141,138 +123,75 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   // MARK: - The tree
 
+  /// The object an oid stands for, looked up in the device as it is now: the tree is
+  /// OCA's, and nothing of it is kept here.
   private func entry(_ oid: NcOid) async -> Entry? {
-    guard let indexed else {
-      await walk()
-      return index[oid]
+    guard let root = await device.rootBlock,
+          let object = await device.objects[mapping.objectNumber(of: oid)]
+    else { return nil }
+    if object === root { return Entry(object: root, owner: nil, role: mapping.rootRole) }
+    // an object is in the tree if its owner is, up to the root block
+    guard let owner = await owner(of: object, root: root), await entry(mapping.oid(of: owner)) != nil else {
+      return nil
     }
-    if let entry = index[oid] { return entry }
-    guard indexed.duration(to: .now) >= Self.indexLifetime else { return nil }
-    await walk()
-    return index[oid]
+    return Entry(object: object, owner: mapping.oid(of: owner), role: role(of: object))
   }
 
-  private func walk() async {
-    if let walking { return await walking.value }
-    let walking = Task { @OcaDevice in
-      await self.walkTree()
-      self.walking = nil
+  /// The block an object is in: the root block for a manager, as MS-05-02 has it.
+  private func owner(of object: SwiftOCADevice.OcaRoot, root: SwiftOCADevice.OcaRoot) async -> OcaONo? {
+    if object is SwiftOCADevice.OcaManager {
+      return await managers().contains { $0 === object } ? root.objectNumber : nil
     }
-    self.walking = walking
-    await walking.value
+    guard let owner = (object as? any SwiftOCADevice.OcaOwnable)?.owner, owner != OcaInvalidONo else { return nil }
+    return owner
   }
 
-  /// Finds every object reachable from the root block, which MS-05-02 has contain the
-  /// managers too. An object in two blocks is presented in the first it is found in.
-  private func walkTree() async {
-    var index = [NcOid: Entry]()
-    guard let root = await device.rootBlock, let deviceManager = await device.deviceManager else {
-      return
-    }
-    // the class manager is one of the managers listed below, so it is made first
+  /// The managers, device manager first, which the root block contains.
+  private func managers() async -> [SwiftOCADevice.OcaRoot] {
+    guard let deviceManager = await device.deviceManager else { return [] }
+    // the class manager is one of them, so it is made first
     await registerEndpoint()
-    let changes = changes
-    walks += 1
     var managers: [SwiftOCADevice.OcaRoot] = [deviceManager]
     for manager in deviceManager.managers where manager.objectNumber != deviceManager.objectNumber {
       if let object: SwiftOCADevice.OcaRoot = await device.resolve(objectNumber: manager.objectNumber) {
         managers.append(object)
       }
     }
-
-    // every object's class is described as it is found, the root block's here
-    _ = classes.controlClass(of: root, role: mapping.rootRole)
-    var pending: [(object: SwiftOCADevice.OcaRoot, owner: NcOid?, role: String)] =
-      [(root, nil, mapping.rootRole)]
-    var claimed: Set<NcOid> = [mapping.oid(of: root.objectNumber)]
-    while !pending.isEmpty {
-      let (object, owner, role) = pending.removeFirst()
-      let oid = mapping.oid(of: object.objectNumber)
-      var children = [SwiftOCADevice.OcaRoot]()
-      if let block = object as? any OcaBlockContainer {
-        children = (object === root ? managers : []) + block.actionObjects
-      }
-
-      var members = [NcOid]()
-      var roles = Set<String>()
-      for child in children {
-        let childOid = mapping.oid(of: child.objectNumber)
-        guard claimed.insert(childOid).inserted else { continue }
-        let childRole = await nmosRole(of: child, oid: childOid, among: &roles)
-        members.append(childOid)
-        pending.append((child, oid, childRole))
-      }
-      index[oid] = Entry(object: object, owner: owner, role: role, members: members)
-    }
-    self.index = index
-    // the walk stands until a block or the device manager says the tree has changed,
-    // which one may have done while it was being walked
-    let blocks = index.values.filter { $0.object is any OcaBlockContainer }.map(\.object.objectNumber)
-    await observe(Set(blocks + [deviceManager.objectNumber]), deviceManager: deviceManager)
-    indexed = changes == self.changes ? .now : nil
+    return managers
   }
 
-  /// The role a child is presented under in its block, among the roles its siblings have
-  /// taken: its OCA role without dots, as they separate role paths; a standard class's
-  /// fixed role where it has one; and its oid appended where a sibling has the role.
-  private func nmosRole(of child: SwiftOCADevice.OcaRoot, oid: NcOid, among roles: inout Set<String>) async -> String {
-    var role = child.role.replacingOccurrences(of: ".", with: "_")
-    // the class is described as it is found, under the role it was found with
-    let classID = classes.controlClass(of: child, role: role).classID
-    if let fixed = NcStandardModel.fixedRole(of: classID) { role = fixed }
-    if !roles.insert(role).inserted {
-      role += "_\(oid)"
-      roles.insert(role)
+  /// A block's members, in order: the objects it owns and, for the root block, the managers.
+  private func members(of block: SwiftOCADevice.OcaRoot) async -> [SwiftOCADevice.OcaRoot] {
+    guard let container = block as? any OcaBlockContainer, let root = await device.rootBlock else { return [] }
+    let candidates = (block === root ? await managers() : []) + container.actionObjects
+    // a manager the root block also lists is a member once
+    var members = [SwiftOCADevice.OcaRoot]()
+    var seen = Set<OcaONo>()
+    for candidate in candidates where seen.insert(candidate.objectNumber).inserted {
+      if await owner(of: candidate, root: root) == block.objectNumber { members.append(candidate) }
     }
-    return role
+    return members
   }
 
-  /// Observes the property changes of the objects that say what the tree contains.
-  private func observe(_ objects: Set<OcaONo>, deviceManager: SwiftOCADevice.OcaDeviceManager) async {
-    if structural.isEmpty {
-      structural = Set(mapping.anchors.flatMap(\.properties).compactMap { property in
-        if case let .members(id) = property.source { id } else { nil }
-      })
-      let managers = deviceManager.devicePropertyDescriptors.first { $0.name == mapping.managersProperty }
-      if let managers { structural.insert(managers.propertyID) }
-    }
-    let observer = await describer()
-    func subscription(_ objectNumber: OcaONo) -> OcaSubscriptionManagerSubscription {
-      .subscription2(OcaSubscription2(
-        event: OcaEvent(emitterONo: objectNumber, eventID: OcaPropertyChangedEventID),
-        notificationDeliveryMode: .normal,
-        destinationInformation: OcaNetworkAddress()
-      ))
-    }
-    // the subscription manager holds every controller's subscriptions
-    let subscriptionManager = await device.subscriptionManager
-    for objectNumber in objects.subtracting(observed) {
-      try? subscriptionManager?.addSubscription(subscription(objectNumber), for: observer)
-    }
-    for objectNumber in observed.subtracting(objects) {
-      subscriptionManager?.removeSubscription(subscription(objectNumber), for: observer)
-    }
-    observed = objects
+  /// An object's OCA role as MS-05-02 allows one: without dots, as they separate role paths,
+  /// and a standard class's fixed role where it has one.
+  private func role(of object: SwiftOCADevice.OcaRoot) -> String {
+    let role = object.role.replacingOccurrences(of: ".", with: "_")
+    let classID = classes.controlClass(of: object, role: role).classID
+    return NcStandardModel.fixedRole(of: classID) ?? role
   }
 
-  /// The bridge's controller, made and given to the device when it is first needed.
-  private func describer() async -> NMOSOcaControlController {
-    if let observer { return observer }
-    await registerEndpoint()
-    if let observer { return observer }
-    let observer = NMOSOcaControlController(description: "ncp/bridge", flags: []) {
-      [weak self] objectNumber, property in
-      await self?.treeChanged(property, of: objectNumber)
+  /// The role an object is presented under in its block: its oid is appended where a
+  /// sibling before it has the same role, as roles are unique within a block.
+  private func nmosRole(of entry: Entry) async -> String {
+    guard let owner = entry.owner, let block = await device.objects[mapping.objectNumber(of: owner)] else {
+      return entry.role
     }
-    self.observer = observer
-    endpoint.add(observer)
-    return observer
-  }
-
-  private func treeChanged(_ property: OcaPropertyID, of objectNumber: OcaONo) {
-    guard structural.contains(property), observed.contains(objectNumber) else { return }
-    changes += 1
-    indexed = nil
+    for sibling in await members(of: block) {
+      if sibling === entry.object { return entry.role }
+      if role(of: sibling) == entry.role { return entry.role + "_\(mapping.oid(of: entry.object.objectNumber))" }
+    }
+    return entry.role
   }
 
   private func registerEndpoint() async {
@@ -295,13 +214,14 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       classID: classes.controlClass(of: entry.object, role: entry.role).classID,
       oid: oid,
       owner: entry.owner,
-      role: entry.role,
+      role: nmosRole(of: entry),
       touchpoints: touchpoints(of: entry.object)
     )
   }
 
   public func members(of block: NcOid) async -> [NcOid] {
-    await entry(block)?.members ?? []
+    guard let entry = await entry(block) else { return [] }
+    return await members(of: entry.object).map { mapping.oid(of: $0.objectNumber) }
   }
 
   /// The IS-04 resources an object stands for: the device for the root block, the node
@@ -605,10 +525,12 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   }
 
   /// A class manager publishes the classes of every object in the model, so each has
-  /// to have been looked at before they are listed. A walk looks at them all, and is
-  /// needed again only when the tree has changed since the last.
+  /// to have been looked at before they are listed; a class is described only once.
   private func describeEveryObject() async {
-    if indexed == nil { await walk() }
+    await registerEndpoint()
+    for object in await device.objects.values {
+      _ = classes.controlClass(of: object, role: role(of: object))
+    }
   }
 
   // MARK: - Sessions

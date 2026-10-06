@@ -62,15 +62,15 @@ public struct NMOSOcaControlMapping: Sendable {
     public var oca: OcaClassID
     public var nc: NcClassID
     public var properties: [Property]
-    /// Whether the OCA class is the standard class exactly, so that nothing it and the
-    /// classes above it have is presented beyond the standard class's elements.
-    public var isExact: Bool
+    /// Whether the OCA class, and the OCA classes above it, are hidden behind the standard
+    /// class: nothing they have is presented beyond the standard class's elements.
+    public var hideSubclasses: Bool
 
-    public init(_ oca: OcaClassID, _ nc: NcClassID, _ properties: [Property] = [], isExact: Bool = false) {
+    public init(_ oca: OcaClassID, _ nc: NcClassID, _ properties: [Property] = [], hideSubclasses: Bool = false) {
       self.oca = oca
       self.nc = nc
       self.properties = properties
-      self.isExact = isExact
+      self.hideSubclasses = hideSubclasses
     }
   }
 
@@ -111,7 +111,7 @@ public struct NMOSOcaControlMapping: Sendable {
       ]),
       Anchor("1.3", NcStandardModel.manager),
       // its OCA methods are NcClassManager's own, in OCA's terms
-      Anchor(OcaClassManager.classID, NcStandardModel.classManager, isExact: true),
+      Anchor(OcaClassManager.classID, NcStandardModel.classManager, hideSubclasses: true),
       Anchor("1.3.1", NcStandardModel.deviceManager, [
         Property(3, 1, .constant(.string(NcStandardModel.version))),
         Property(3, 2, .property("3.15")),

@@ -25,10 +25,9 @@ applied to the class IDs above. It holds for properties and methods alike.
 AES70 has no class manager, so the bridge adds one to the device: `OcaClassManager`, an
 OCA manager of PADL's (class `1.3.<PADL>.1`, object number 4095, the last AES70
 reserves). It is registered with the device like any manager, so it is listed in the
-device manager's `Managers`, and the walk finds it among them; the mapping anchors it to
-`NcClassManager`. As its class adds nothing to OcaManager, it is presented as
-`NcClassManager` itself, whose methods and properties `NcObjectModel` answers for any
-object the source presents with that class. Nothing in the object model is special to
+device manager's `Managers`, which the root block's members include; the mapping anchors
+it to `NcClassManager`, and it is presented as `NcClassManager` itself, whose methods and
+properties `NcObjectModel` answers for any object the source presents with that class. Nothing in the object model is special to
 its oid.
 
 To an OCA controller it describes the classes of the device's objects in OCA's terms:
@@ -38,8 +37,8 @@ correspond to MS-05-02's. They and the controller's `OcaClassManager` are in the
 `SwiftOCAClassManager` library, which knows nothing of NMOS; a controller calls
 `OcaClassManager.register()` to resolve the device's class manager to it. Its methods
 are NcClassManager's own in OCA's terms, so IS-12 presents it as `NcClassManager`
-exactly: its anchor is exact (`isExact`), and nothing of it or the OCA classes above it
-is presented beyond the standard class.
+exactly: its anchor hides it and the OCA classes above it (`hideSubclasses`), so nothing
+of them is presented beyond the standard class.
 
 ## The one exception: OcaRoot
 
@@ -62,6 +61,15 @@ method table in SwiftOCADevice and in one vendor device: the only collisions are
 they fall inside the exception; a non-block class that
 defines `{2, 4}` or `{3, 1}` shares numerals with NcBlock or NcClassManager in an unrelated
 class, which MS-05-02 allows (NcReceiverMonitor and NcSenderMonitor both define `4m1`).
+
+## The tree
+
+The tree is the device's, looked up when a request needs it and never copied: an oid is
+the object of that number in `OcaDevice.objects`, and it is in the tree if its owner is,
+up to the root block. A manager's owner is the root block, as MS-05-02 has it; any other
+object's is the block that owns it (`OcaOwnable.owner`). A block's members are the
+objects it owns, after the managers for the root block. So what a dataset or a controller
+changes is seen at once, and the bridge neither walks the tree nor watches it.
 
 ## Methods
 

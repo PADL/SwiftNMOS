@@ -864,34 +864,24 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   }
 
   @OcaDevice
-  func testTheTreeIsWalkedOnlyWhenItChanges() async throws {
-    _ = await members(of: 1, recurse: true)
-    let walks = model.source.walks
-    XCTAssertGreaterThan(walks, 0)
+  func testTheTreeIsTheDevicesAsItIsNow() async throws {
+    let unknown = await get(NcOid(0x7000_0000), 1, 2)
+    XCTAssertEqual(unknown.status, .badOid)
 
-    // nothing a controller asks makes for another walk: not classes, not datatypes,
-    // not members, and not oids that do not exist, however many it tries
-    for attempt in 0..<50 {
-      _ = try await classDescriptor([1, 2, Fixture.aes, 1, 1, 5], inherited: attempt % 2 == 0)
-      _ = await get(model.classManagerOid, 3, 2)
-      _ = await members(of: 1, recurse: true)
-      let unknown = await get(NcOid(0x7000_0000 + attempt), 1, 2)
-      XCTAssertEqual(unknown.status, .badOid)
-    }
-    XCTAssertEqual(model.source.walks, walks)
-
-    // a block that gains or loses a member does
+    // a block that gains or loses a member is seen to at once
     let added = try await SwiftOCADevice.OcaGain(
       role: "Added-\(UUID().uuidString)", deviceDelegate: OcaDevice.shared, addToRootBlock: false
     )
+    let unowned = await get(added.objectNumber, 1, 2)
+    XCTAssertEqual(unowned.status, .badOid)
     try await Fixture.block.add(actionObject: added)
     let found = await get(added.objectNumber, 1, 2)
     XCTAssertEqual(found.value, .integer(Int64(added.objectNumber)))
-    XCTAssertEqual(model.source.walks, walks + 1)
+    let members = await model.source.members(of: Fixture.block.objectNumber)
+    XCTAssertTrue(members.contains(added.objectNumber))
     try await Fixture.block.delete(actionObject: added)
     let removed = await get(added.objectNumber, 1, 2)
     XCTAssertEqual(removed.status, .badOid)
-    XCTAssertEqual(model.source.walks, walks + 2)
   }
 
   @OcaDevice
@@ -982,17 +972,6 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     XCTAssertEqual(deviceManager.value, [NcTouchpoint(resourceType: "node", id: Fixture.ids.node).json])
     let gain = await get(Fixture.gain.objectNumber, 1, 7)
     XCTAssertEqual(gain.value, .null)
-  }
-
-  @OcaDevice
-  func testSessionsThatAskTogetherShareOneWalk() async throws {
-    let model = NMOSOcaDeviceModel(device: OcaDevice.shared)
-    async let first = model.source.members(of: 1)
-    async let second = model.source.members(of: 1)
-    let (one, other) = await (first, second)
-    XCTAssertFalse(one.isEmpty)
-    XCTAssertEqual(one, other)
-    XCTAssertEqual(model.source.walks, 1)
   }
 
   @OcaDevice

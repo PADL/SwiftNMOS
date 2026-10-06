@@ -151,7 +151,7 @@ final class NMOSOcaControlClasses {
 
     // what the OCA classes have beyond that, one non-standard class per OCA class
     var descriptors = [NcClassDescriptor]()
-    for (depth, ocaClass) in lineage.presented where !anchor.isExact || depth > anchorDepth {
+    for (depth, ocaClass) in lineage.presented where !anchor.hideSubclasses || depth > anchorDepth {
       // a class ID names every class above it, and each is to be described, whether or
       // not a class of the object stands for it
       descriptors += ocaClass.classID.classIDs(after: lineage[depth - 1].classID).map { unstated in
