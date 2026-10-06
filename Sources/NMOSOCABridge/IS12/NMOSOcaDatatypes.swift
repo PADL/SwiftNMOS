@@ -366,10 +366,14 @@ final class NMOSOcaDatatypes {
     case let .optional(wrapped):
       return standard.isNull ? .null : try oca(from: standard, as: wrapped)
     case let .map(_, key, value):
+      // a sequence may hold a key twice and a map cannot: the first entry for a key is kept
       guard let entries = standard.arrayValue else { throw mismatch() }
-      return try .array(entries.map { entry in
+      var keys = Set<NMOSJSONValue>()
+      return try .array(entries.compactMap { entry in
         guard let entryKey = entry["Key"], let entryValue = entry["Value"] else { throw mismatch() }
-        return try [oca(from: entryKey, as: key), oca(from: entryValue, as: value)]
+        let ocaKey = try oca(from: entryKey, as: key)
+        guard keys.insert(ocaKey).inserted else { return nil }
+        return try [ocaKey, oca(from: entryValue, as: value)]
       })
     }
     return standard

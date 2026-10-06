@@ -469,14 +469,16 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let routing = await get(trimmed, 6, 2)
     XCTAssertEqual(routing.value, [["Key": 1, "Value": [["Mode": 1, "Index": 2]]]])
 
-    // a sequence may hold an item twice and a map cannot hold a key twice, so a map is
-    // a sequence that is only read
-    let written = await set(trimmed, 6, 2, [["Key": 3, "Value": [["Mode": 2, "Index": 4]]]])
-    XCTAssertEqual(written.status, .readonly)
-    XCTAssertNil(Fixture.trimmed.routing[3])
+    // a sequence may hold a key twice and a map cannot, so the first entry for a key is kept
+    let written = await set(trimmed, 6, 2, [
+      ["Key": 3, "Value": [["Mode": 2, "Index": 4]]],
+      ["Key": 3, "Value": [["Mode": 1, "Index": 5]]],
+    ])
+    XCTAssertEqual(written.status, .ok)
+    XCTAssertEqual(Fixture.trimmed.routing, [3: [OcaPortID(mode: .output, index: 4)]])
     let descriptor = try await classDescriptor([1, 2, Fixture.aes, 1, 1, 5, Fixture.padl, 1])
     let routingDescriptor = descriptor["properties"]?.arrayValue?.first { $0["name"] == "routing" }
-    XCTAssertEqual(routingDescriptor?["isReadOnly"], true)
+    XCTAssertEqual(routingDescriptor?["isReadOnly"], false)
 
     // an optional with no value reads as null rather than failing
     let note = await get(trimmed, 6, 3)

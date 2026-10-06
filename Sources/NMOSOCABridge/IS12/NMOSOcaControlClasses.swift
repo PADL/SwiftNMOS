@@ -301,10 +301,7 @@ final class NMOSOcaControlClasses {
         components = [(property.name, property.propertyID, .property(property, schema, .identity))]
       }
       let reference = try datatypes.reference(to: schema)
-      // a map is presented as a sequence of its entries, which cannot be written as
-      // one: a sequence may hold an item twice and a map cannot hold a key twice
-      var isReadOnly = !property.isSettable
-      if case .map = schema { isReadOnly = true }
+      let isReadOnly = !property.isSettable
       if !isReadOnly, await !writable(property, schema) {
         let ids = components.map { NcElementID(level: level, index: $0.id.propertyIndex) }
         refused[described.descriptor.classID, default: []].formUnion(ids)
