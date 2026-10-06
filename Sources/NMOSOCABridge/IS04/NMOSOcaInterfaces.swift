@@ -22,8 +22,8 @@ import SwiftOCADevice
 
 extension SwiftOCADevice.OcaNetworkInterface {
   nonisolated static let nmosNameProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaNetworkInterface.self, [
-    .init(defLevel: 2, propertyIndex: 1): { $0.label },
-    .init(defLevel: 2, propertyIndex: 4): { $0.systemIOInterfaceName },
+    .init(defLevel: 2, propertyIndex: 1), // label
+    .init(defLevel: 2, propertyIndex: 4), // systemIOInterfaceName
   ])
 }
 
@@ -47,8 +47,8 @@ public extension OcaMacAddress {
 extension NMOSOcaBridge {
   static let interfaceProperties = SwiftOCADevice.OcaNetworkInterface.nmosNameProperties
     + .of(SwiftOCADevice.OcaNetworkInterface.self, [
-      .init(defLevel: 2, propertyIndex: 7): { $0.adaptationIdentifier },
-      .init(defLevel: 2, propertyIndex: 8): { $0.currentAdaptationData },
+      .init(defLevel: 2, propertyIndex: 7), // adaptationIdentifier
+      .init(defLevel: 2, propertyIndex: 8), // currentAdaptationData
     ])
 
   /// The node's interfaces: those the host names, then any OCA network interface that
@@ -70,7 +70,7 @@ extension NMOSOcaBridge {
 
 extension NMOSOcaEndpoint {
   static let interfaceProperties = SwiftOCADevice.OcaNetworkInterface.nmosNameProperties
-    + .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 2, propertyIndex: 3): { $0.networkInterfaceAssignments }])
+    + .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 2, propertyIndex: 3)])
 
   /// The names of the network interfaces the endpoint is assigned to, one per leg: those
   /// its own assignment IDs select, or every assignment of the application if it has none.

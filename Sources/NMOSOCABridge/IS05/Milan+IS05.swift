@@ -32,8 +32,8 @@ extension NMOSOcaMilanAdaptation: NMOSOcaConnecting {
 
   /// A listener's binding is its session, found through the application's agents.
   public var connectionProperties: NMOSOcaObservedProperties {
-    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 13): { $0.transportSessionControlAgentONos }])
-      + .of(SwiftOCADevice.OcaMediaTransportSessionAgent.self, [.init(defLevel: 3, propertyIndex: 2): { $0.sessions }])
+    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 13)])
+      + .of(SwiftOCADevice.OcaMediaTransportSessionAgent.self, [.init(defLevel: 3, propertyIndex: 2)])
   }
 
   /// The session agent holding the session for an input endpoint. AES70-22 gives each

@@ -54,9 +54,9 @@ public extension NMOSOcaResourceDescribing {
 
 extension NMOSOcaEndpoint {
   static let descriptionProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaMediaTransportApplication.self, [
-    .init(defLevel: 2, propertyIndex: 1): { $0.label },
-    .init(defLevel: 3, propertyIndex: 1): { $0.ports },
-    .init(defLevel: 3, propertyIndex: 7): { $0.mediaStreamModeCapabilities },
+    .init(defLevel: 2, propertyIndex: 1), // label
+    .init(defLevel: 3, propertyIndex: 1), // ports
+    .init(defLevel: 3, propertyIndex: 7), // mediaStreamModeCapabilities
   ])
 
   /// The audio media types AES70 says the endpoint handles: those of its stream mode
@@ -112,7 +112,7 @@ extension NMOSOcaEndpoint {
 extension NMOSOcaBridge {
   private static let defaultSampleRate = 48000
 
-  static let sampleRateProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaMediaClock3.self, [.init(defLevel: 3, propertyIndex: 4): { $0.currentRate }])
+  static let sampleRateProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaMediaClock3.self, [.init(defLevel: 3, propertyIndex: 4)])
 
   /// The rate of the stream, else of the media clock it is timed from.
   private func sampleRate(of endpoint: NMOSOcaEndpoint) async -> Int {

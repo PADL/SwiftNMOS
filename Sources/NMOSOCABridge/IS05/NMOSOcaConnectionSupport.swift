@@ -63,8 +63,8 @@ extension NMOSConnectionError {
 
 extension NMOSOcaEndpoint {
   static let addressProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaMediaTransportApplication.self, [
-    .init(defLevel: 2, propertyIndex: 3): { $0.networkInterfaceAssignments },
-  ]) + .of(SwiftOCADevice.OcaNetworkInterface.self, [.init(defLevel: 2, propertyIndex: 8): { $0.currentAdaptationData }])
+    .init(defLevel: 2, propertyIndex: 3), // networkInterfaceAssignments
+  ]) + .of(SwiftOCADevice.OcaNetworkInterface.self, [.init(defLevel: 2, propertyIndex: 8)])
 
   /// The IPv4 addresses of the network interfaces the endpoint's application is assigned.
   @OcaDevice

@@ -17,6 +17,7 @@
 import Foundation
 @testable import NMOSOCABridge
 import SwiftOCA
+@_spi(SwiftOCAPrivate)
 import SwiftOCADevice
 import Synchronization
 import XCTest
@@ -26,26 +27,31 @@ final class NMOSOcaObservedObjectTests: XCTestCase {
   private var properties: NMOSOcaObservedProperties { NMOSOcaAdaptations.standard.observedProperties }
 
   @OcaDevice
+  private func observe(_ object: SwiftOCADevice.OcaRoot) async -> NMOSOcaObservedObject {
+    await NMOSOcaObservedObject(object, observing: properties, by: NMOSOcaObserver(device: OcaDevice.shared))
+  }
+
+  @OcaDevice
   func testATransportApplicationsCountersAreNotAChangeButItsEndpointsAre() async throws {
     let application = try await TestDevice.makeApplication("Observed")
-    let observed = NMOSOcaObservedObject(application, observing: properties)
-
-    application.endpointCounterSets = [1: OcaCounterSet()]
+    let observed = await observe(application)
     XCTAssertFalse(observed.isChange("3.12"))
-    application.counterSet = OcaCounterSet()
     XCTAssertFalse(observed.isChange("2.6"))
-
-    application.insert(endpoint: OcaMediaStreamEndpoint(idInternal: 1, direction: .input), status: .init(state: .ready))
     XCTAssertTrue(observed.isChange("3.10"))
   }
 
-  /// A change made between observing an object and its first signal is not missed.
+  /// The device tells the bridge's controller of a change, as it would any controller.
   @OcaDevice
-  func testAChangeAfterTheObjectIsObservedIsOne() async throws {
+  func testAChangeAfterTheObjectIsObservedIsHeardOf() async throws {
     let application = try await TestDevice.makeApplication("Observed")
-    let observed = NMOSOcaObservedObject(application, observing: properties)
+    let observed = await observe(application)
     application.label = "Renamed"
-    XCTAssertTrue(observed.isChange("2.1"))
+    let heard = Mutex<OcaPropertyID?>(nil)
+    await observed.observe { id in
+      heard.withLock { $0 = id }
+      return false
+    }
+    XCTAssertEqual(heard.withLock { $0 }, "2.1")
   }
 
   /// An adaptation the bridge does not know might read a subclass's property.
@@ -54,10 +60,7 @@ final class NMOSOcaObservedObjectTests: XCTestCase {
     let application = try await SwiftOCADevice.Aes67OcaMediaTransportApplication(
       role: TestDevice.role("AES67"), deviceDelegate: OcaDevice.shared
     )
-    let observed = NMOSOcaObservedObject(application, observing: properties)
-    // its first signal is the value it has
-    XCTAssertFalse(observed.isChange("4.1"))
-    application.streamSourceRegistryONo = 4096
+    let observed = await observe(application)
     XCTAssertTrue(observed.isChange("4.1"))
     XCTAssertFalse(observed.isChange("3.12"))
   }
@@ -65,10 +68,7 @@ final class NMOSOcaObservedObjectTests: XCTestCase {
   @OcaDevice
   func testAnObjectOfAClassNobodyDeclaresIsObservedForEveryChange() async throws {
     let gain = try await SwiftOCADevice.OcaGain(role: TestDevice.role("Gain"), deviceDelegate: OcaDevice.shared)
-    let observed = NMOSOcaObservedObject(gain, observing: properties)
-    // each property's first signal is the value it has
-    XCTAssertFalse(observed.isChange("4.1"))
-    XCTAssertFalse(observed.isChange("1.5"))
+    let observed = await observe(gain)
     XCTAssertTrue(observed.isChange("4.1"))
     XCTAssertTrue(observed.isChange("1.5"))
   }
@@ -93,22 +93,11 @@ final class NMOSOcaObservedObjectTests: XCTestCase {
     var covered = Set<OcaClassID>()
     for object in objects {
       covered.formUnion(properties.classIDs(of: object))
-      let declared = Set(properties.getters(for: object).getters.keys)
-      let properties = try await signalledProperties(of: object)
-      XCTAssertEqual(declared.subtracting(properties), [], "\(type(of: object)) has no such property")
+      let declared = properties.properties(of: object).properties
+      let has = Set(object.deviceClassDescriptors.flatMap(\.properties).flatMap { [$0.propertyID, $0.yPropertyID] }
+        .compactMap(\.self))
+      XCTAssertEqual(declared.subtracting(has), [], "\(type(of: object)) has no such property")
     }
     XCTAssertEqual(properties.classIDs.subtracting(covered), [], "no object here is of these classes")
-  }
-
-  /// The properties an object has: each signals its value when the object is observed.
-  @OcaDevice
-  private func signalledProperties(of object: SwiftOCADevice.OcaRoot) async throws -> Set<OcaPropertyID> {
-    let signalled = Mutex(Set<OcaPropertyID>())
-    let task = Task { @OcaDevice in
-      for try await id in object.propertyChanges { _ = signalled.withLock { $0.insert(id) } }
-    }
-    try await Task.sleep(for: .milliseconds(100))
-    task.cancel()
-    return signalled.withLock { $0 }
   }
 }

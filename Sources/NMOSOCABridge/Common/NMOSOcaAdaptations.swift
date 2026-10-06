@@ -33,7 +33,7 @@ public struct NMOSOcaRTPAdaptation: NMOSOcaTransportAdaptation {
 
   /// The application looks the endpoint up to say how it is described.
   public var claimProperties: NMOSOcaObservedProperties {
-    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 10): { $0.endpoints }])
+    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 10)])
   }
 }
 
@@ -61,8 +61,8 @@ public struct NMOSOcaMilanAdaptation: NMOSOcaTransportAdaptation {
 
   public var claimProperties: NMOSOcaObservedProperties {
     .of(SwiftOCADevice.OcaMediaTransportApplication.self, [
-      .init(defLevel: 2, propertyIndex: 4): { $0.adaptationIdentifier },
-      .init(defLevel: 3, propertyIndex: 10): { $0.endpoints },
+      .init(defLevel: 2, propertyIndex: 4), // adaptationIdentifier
+      .init(defLevel: 3, propertyIndex: 10), // endpoints
     ])
   }
 }

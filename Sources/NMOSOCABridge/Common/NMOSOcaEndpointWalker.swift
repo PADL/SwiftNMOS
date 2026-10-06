@@ -53,11 +53,13 @@ public struct NMOSOcaEndpoint: Sendable {
 public final class NMOSOcaEndpointWalker: Sendable {
   private let device: OcaDevice
   private let adaptations: NMOSOcaAdaptations
+  private let observer: NMOSOcaObserver
 
   /// `adaptations` are those whose reads the consumer makes, which are observed too.
   public nonisolated init(device: OcaDevice = .shared, adaptations: NMOSOcaAdaptations = .standard) {
     self.device = device
     self.adaptations = adaptations
+    observer = NMOSOcaObserver(device: device)
   }
 
   public var networkManager: SwiftOCADevice.OcaNetworkManager? {
@@ -89,11 +91,11 @@ public final class NMOSOcaEndpointWalker: Sendable {
   }
 
   static let observedProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaNetworkManager.self, [
-    .init(defLevel: 3, propertyIndex: 5): { $0.networkInterfaces.map(\.objectNumber) },
-    .init(defLevel: 3, propertyIndex: 6): { $0.networkApplications.map(\.objectNumber) },
+    .init(defLevel: 3, propertyIndex: 5), // networkInterfaces
+    .init(defLevel: 3, propertyIndex: 6), // networkApplications
   ]) + .of(SwiftOCADevice.OcaMediaTransportApplication.self, [
-    .init(defLevel: 3, propertyIndex: 10): { $0.endpoints },
-    .init(defLevel: 3, propertyIndex: 11): { $0.endpointStatuses },
+    .init(defLevel: 3, propertyIndex: 10), // endpoints
+    .init(defLevel: 3, propertyIndex: 11), // endpointStatuses
   ])
 
   /// Yields whenever something the bridge reads of the network manager, an application
@@ -125,9 +127,8 @@ public final class NMOSOcaEndpointWalker: Sendable {
         await Self.untilCancelled()
         break
       }
-      // what each object holds is noted before the consumer is told to read it all
-      let properties = adaptations.observedProperties
-      let observed = objects.map { NMOSOcaObservedObject($0, observing: properties) }
+      // each object is watched before the consumer is told to read it all
+      let observed = await watch(objects)
       continuation.yield()
       // only the network manager's lists of applications and interfaces change the set
       await NMOSOcaObservedObject.observe(observed) { object in
@@ -160,9 +161,8 @@ public final class NMOSOcaEndpointWalker: Sendable {
     while !Task.isCancelled {
       let current = await objects()
       let observedNumbers = current.map(\.objectNumber)
-      // what each object holds is noted before the consumer is told to read it all
-      let properties = adaptations.observedProperties
-      let observed = current.map { NMOSOcaObservedObject($0, observing: properties) }
+      // each object is watched before the consumer is told to read it all
+      let observed = await watch(current)
       continuation.yield()
       await NMOSOcaObservedObject.observe(observed, alongside: {
         for await _ in self.changes() {
@@ -174,6 +174,15 @@ public final class NMOSOcaEndpointWalker: Sendable {
         return true
       }
     }
+  }
+
+  private func watch(_ objects: [SwiftOCADevice.OcaRoot]) async -> [NMOSOcaObservedObject] {
+    let properties = adaptations.observedProperties
+    var observed = [NMOSOcaObservedObject]()
+    for object in objects {
+      await observed.append(NMOSOcaObservedObject(object, observing: properties, by: observer))
+    }
+    return observed
   }
 
   private static func untilCancelled() async {

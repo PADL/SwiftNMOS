@@ -37,8 +37,8 @@ extension NMOSOcaDanteAdaptation: NMOSOcaConnecting {
 
   /// A sender is named by the device; a channel is read from its channel endpoint.
   public var connectionProperties: NMOSOcaObservedProperties {
-    .of(SwiftOCADevice.OcaDeviceManager.self, [.init(defLevel: 3, propertyIndex: 4): { $0.deviceName }])
-      + .of(SwiftOCADevice.DanteOcaMediaTransportApplication.self, [Self.channelEndpointsID: { $0.channelEndpoints }])
+    .of(SwiftOCADevice.OcaDeviceManager.self, [.init(defLevel: 3, propertyIndex: 4)])
+      + .of(SwiftOCADevice.DanteOcaMediaTransportApplication.self, [Self.channelEndpointsID])
   }
 
   private func streamEndpointID(of channel: OcaChannelEndpoint) -> OcaMediaStreamEndpointID? {

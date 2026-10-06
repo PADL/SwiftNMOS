@@ -34,7 +34,7 @@ extension NMOSOcaRTPAdaptation: NMOSOcaConnecting {
 
   /// The AES67 adaptation data is the endpoint's; the addresses its interfaces'.
   public var connectionProperties: NMOSOcaObservedProperties {
-    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 10): { $0.endpoints }])
+    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 10)])
       + NMOSOcaEndpoint.addressProperties
   }
 

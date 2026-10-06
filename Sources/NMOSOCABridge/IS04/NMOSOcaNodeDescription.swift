@@ -42,8 +42,8 @@ extension NMOSOcaBridge {
   }
 
   private static let deviceManagerProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaDeviceManager.self, [
-    .init(defLevel: 3, propertyIndex: 3): { $0.modelDescription.description },
-    .init(defLevel: 3, propertyIndex: 4): { $0.deviceName },
+    .init(defLevel: 3, propertyIndex: 3), // modelDescription
+    .init(defLevel: 3, propertyIndex: 4), // deviceName
   ])
 
   /// What describing the device reads of its objects, each part declared beside its reads.

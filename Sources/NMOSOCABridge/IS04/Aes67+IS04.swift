@@ -39,7 +39,7 @@ extension NMOSOcaRTPAdaptation: NMOSOcaResourceDescribing {
 
   /// The cast mode and the AES67 destination are the endpoint's.
   public var descriptionProperties: NMOSOcaObservedProperties {
-    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 10): { $0.endpoints }])
+    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 10)])
   }
 
   /// IS-04 requires an RTP sender to give the location of its SDP file.

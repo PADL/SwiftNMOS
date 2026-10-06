@@ -36,12 +36,12 @@ struct NMOSOcaClocks {
 
 extension NMOSOcaBridge {
   static let clockProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaMediaClock3.self, [
-    .init(defLevel: 3, propertyIndex: 2): { $0.timeSourceONo },
+    .init(defLevel: 3, propertyIndex: 2), // timeSourceONo
   ]) + .of(SwiftOCADevice.OcaTimeSource.self, [
-    .init(defLevel: 3, propertyIndex: 2): { $0.timeDeliveryMechanism },
-    .init(defLevel: 3, propertyIndex: 5): { $0.referenceID },
-    .init(defLevel: 3, propertyIndex: 6): { $0.syncStatus },
-    .init(defLevel: 3, propertyIndex: 8): { $0.protocol },
+    .init(defLevel: 3, propertyIndex: 2), // timeDeliveryMechanism
+    .init(defLevel: 3, propertyIndex: 5), // referenceID
+    .init(defLevel: 3, propertyIndex: 6), // syncStatus
+    .init(defLevel: 3, propertyIndex: 8), // protocol
   ])
 
   /// One clock for each time source the endpoints' media clocks follow, and one internal

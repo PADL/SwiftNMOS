@@ -82,9 +82,9 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
 
   /// The endpoints and their statuses, and the session agents observed below.
   static let observedProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaMediaTransportApplication.self, [
-    .init(defLevel: 3, propertyIndex: 10): { $0.endpoints },
-    .init(defLevel: 3, propertyIndex: 11): { $0.endpointStatuses },
-    .init(defLevel: 3, propertyIndex: 13): { $0.transportSessionControlAgentONos },
+    .init(defLevel: 3, propertyIndex: 10), // endpoints
+    .init(defLevel: 3, propertyIndex: 11), // endpointStatuses
+    .init(defLevel: 3, propertyIndex: 13), // transportSessionControlAgentONos
   ])
 
   // MARK: - Finding endpoints
