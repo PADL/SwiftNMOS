@@ -47,7 +47,7 @@ public extension NcObjectModel where Source == NMOSOcaObjectSource {
   }
 
   /// Where the class manager is, which is where the bridge makes it.
-  var classManagerOid: NcOid { OcaClassManager.objectNumber }
+  var classManagerOid: NcOid { source.classManagerOid }
 }
 
 /// The objects of an OCA device, presented as the mapping says. Properties are read and
@@ -82,6 +82,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   private let device: OcaDevice
   private let mapping: NMOSOcaControlMapping
+  /// The oid the class manager is presented under.
+  nonisolated var classManagerOid: NcOid { mapping.oid(of: OcaClassManager.objectNumber) }
   private let adaptations: NMOSOcaAdaptations
   private let classes: NMOSOcaControlClasses
   private let labels: any NMOSOcaLabelStore
@@ -94,6 +96,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// Giving the device the endpoint and the class manager, which every caller waits for.
   private var registration: Task<Void, Never>?
   private var handle: OcaUint32 = 0
+  /// Each block's members' roles, with the members they were worked out for.
+  private var roles = [OcaONo: (members: [OcaONo], roles: [OcaONo: String])]()
   private nonisolated let listeners = Mutex([NcSession: AsyncStream<NcNotification>.Continuation]())
 
   nonisolated init(
@@ -138,9 +142,14 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   }
 
   /// The block an object is in: the root block for a manager, as MS-05-02 has it.
-  private func owner(of object: SwiftOCADevice.OcaRoot, root: SwiftOCADevice.OcaRoot) async -> OcaONo? {
+  private func owner(
+    of object: SwiftOCADevice.OcaRoot,
+    root: SwiftOCADevice.OcaRoot,
+    managers: [SwiftOCADevice.OcaRoot]? = nil
+  ) async -> OcaONo? {
     if object is SwiftOCADevice.OcaManager {
-      return await managers().contains { $0 === object } ? root.objectNumber : nil
+      let managers = if let managers { managers } else { await self.managers() }
+      return managers.contains { $0 === object } ? root.objectNumber : nil
     }
     guard let owner = (object as? any SwiftOCADevice.OcaOwnable)?.owner, owner != OcaInvalidONo else { return nil }
     return owner
@@ -163,12 +172,15 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// A block's members, in order: the objects it owns and, for the root block, the managers.
   private func members(of block: SwiftOCADevice.OcaRoot) async -> [SwiftOCADevice.OcaRoot] {
     guard let container = block as? any OcaBlockContainer, let root = await device.rootBlock else { return [] }
-    let candidates = (block === root ? await managers() : []) + container.actionObjects
+    let managers = await managers()
+    let candidates = (block === root ? managers : []) + container.actionObjects
     // a manager the root block also lists is a member once
     var members = [SwiftOCADevice.OcaRoot]()
     var seen = Set<OcaONo>()
     for candidate in candidates where seen.insert(candidate.objectNumber).inserted {
-      if await owner(of: candidate, root: root) == block.objectNumber { members.append(candidate) }
+      if await owner(of: candidate, root: root, managers: managers) == block.objectNumber {
+        members.append(candidate)
+      }
     }
     return members
   }
@@ -187,11 +199,24 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     guard let owner = entry.owner, let block = await device.objects[mapping.objectNumber(of: owner)] else {
       return entry.role
     }
-    for sibling in await members(of: block) {
-      if sibling === entry.object { return entry.role }
-      if role(of: sibling) == entry.role { return entry.role + "_\(mapping.oid(of: entry.object.objectNumber))" }
+    return await roles(in: block)[entry.object.objectNumber] ?? entry.role
+  }
+
+  /// The roles of a block's members, worked out together and kept for as long as the
+  /// block has the same members, so that listing a block is not quadratic in its size.
+  private func roles(in block: SwiftOCADevice.OcaRoot) async -> [OcaONo: String] {
+    let members = await members(of: block)
+    let objectNumbers = members.map(\.objectNumber)
+    if let kept = roles[block.objectNumber], kept.members == objectNumbers { return kept.roles }
+    var taken = Set<String>()
+    var roles = [OcaONo: String]()
+    for member in members {
+      let role = role(of: member)
+      roles[member.objectNumber] = taken.insert(role).inserted
+        ? role : role + "_\(mapping.oid(of: member.objectNumber))"
     }
-    return entry.role
+    self.roles[block.objectNumber] = (objectNumbers, roles)
+    return roles
   }
 
   private func registerEndpoint() async {
@@ -214,8 +239,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       classID: classes.controlClass(of: entry.object, role: entry.role).classID,
       oid: oid,
       owner: entry.owner,
-      role: nmosRole(of: entry),
-      touchpoints: touchpoints(of: entry.object)
+      role: nmosRole(of: entry)
     )
   }
 
@@ -226,7 +250,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   /// The IS-04 resources an object stands for: the device for the root block, the node
   /// for the device manager, and a transport application's senders and receivers.
-  private func touchpoints(of object: SwiftOCADevice.OcaRoot) async -> [NcTouchpoint]? {
+  public func touchpoints(of oid: NcOid) async -> [NcTouchpoint]? {
+    guard let object = await entry(oid)?.object else { return nil }
     guard let ids = await resourceIDs() else { return nil }
     if object.objectNumber == OcaRootBlockONo {
       return [NcTouchpoint(resourceType: "device", id: ids.device)]
@@ -505,8 +530,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     return (response.statusCode, response.parameters.ocp2Parameters)
   }
 
-  /// `NcMethodStatus` for an OCA status that is not `ok`.
-
   // MARK: - Classes
 
   public func classes() async -> [NcClassDescriptor] {
@@ -564,7 +587,14 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   public nonisolated func notifications(for session: NcSession) -> AsyncStream<NcNotification> {
     let (stream, continuation) = AsyncStream<NcNotification>.makeStream()
-    listeners.withLock { $0[session] = continuation }
+    // a session asked again has its events go to the new stream, and the old one ends
+    listeners.withLock { $0.updateValue(continuation, forKey: session) }?.finish()
+    continuation.onTermination = { [weak self] _ in
+      self?.listeners.withLock { listeners in
+        // only if it is still this stream's: a later one may have replaced it
+        if listeners[session].map({ $0 == continuation }) == true { listeners[session] = nil }
+      }
+    }
     return stream
   }
 

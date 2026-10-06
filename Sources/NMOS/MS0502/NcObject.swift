@@ -46,7 +46,7 @@ class NcObject<Source: NcObjectSource> {
     case (1, 3): return NcMethodResult(value: .bool(identity.constantOid))
     case (1, 4): return NcMethodResult(value: identity.owner.map { .integer(Int64($0)) } ?? .null)
     case (1, 5): return NcMethodResult(value: .string(identity.role))
-    case (1, 7): return NcMethodResult(value: identity.touchpoints.map { .array($0.map(\.json)) } ?? .null)
+    case (1, 7): return await NcMethodResult(value: source.touchpoints(of: identity.oid).map { .array($0.map(\.json)) } ?? .null)
     case (1, 8):
       let constraints = await source.runtimeConstraints(of: identity.oid, session: session)
       return NcMethodResult(value: constraints.isEmpty ? .null : .array(constraints))
@@ -75,6 +75,27 @@ class NcObject<Source: NcObjectSource> {
     _ session: NcSession
   ) async throws -> NcMethodResult {
     let property = try arguments.propertyID()
+    // a change is a read and then a write, which two sessions must not interleave
+    guard (4...6).contains(method) else { return try await sequence(method, of: property, arguments, session) }
+    let key = NcSequenceLocks.Key(oid: identity.oid, property: property)
+    let locks = model.sequenceLocks
+    await locks.acquire(key)
+    do {
+      let result = try await sequence(method, of: property, arguments, session)
+      await locks.release(key)
+      return result
+    } catch {
+      await locks.release(key)
+      throw error
+    }
+  }
+
+  private func sequence(
+    _ method: UInt16,
+    of property: NcElementID,
+    _ arguments: NcArguments,
+    _ session: NcSession
+  ) async throws -> NcMethodResult {
     let current = await get(property, session)
     guard !current.status.isError else { return current }
     guard let value = current.value, value.isNull || value.arrayValue != nil else {
@@ -266,6 +287,8 @@ final class NcClassManager<Source: NcObjectSource>: NcObject<Source> {
   /// first request for it and kept.
   private func classDescriptor(_ classID: NcClassID, inherited: Bool) async -> NMOSJSONValue? {
     let key = NcDescriptorCache.Key.controlClass(classID, inherited: inherited)
+    // what is kept stands only while the source describes its classes as it did
+    _ = await descriptorLists()
     if let entry = model.descriptors.entry(for: key) { return entry.json }
 
     let classes = await NcStandardModel.classes + source.classes()
@@ -286,6 +309,7 @@ final class NcClassManager<Source: NcObjectSource>: NcObject<Source> {
   /// The descriptor of a datatype as `GetDatatype` answers with it, kept likewise.
   private func datatypeDescriptor(_ name: String, inherited: Bool) async -> NMOSJSONValue? {
     let key = NcDescriptorCache.Key.datatype(name, inherited: inherited)
+    _ = await descriptorLists()
     if let entry = model.descriptors.entry(for: key) { return entry.json }
 
     let datatypes = await NcStandardModel.datatypes + source.datatypes()

@@ -26,22 +26,19 @@ public struct NcObjectIdentity: Sendable, Hashable {
   /// The block that contains the object; nil only for the root block.
   public var owner: NcOid?
   public var role: String
-  public var touchpoints: [NcTouchpoint]?
 
   public init(
     classID: NcClassID,
     oid: NcOid,
     constantOid: Bool = true,
     owner: NcOid?,
-    role: String,
-    touchpoints: [NcTouchpoint]? = nil
+    role: String
   ) {
     self.classID = classID
     self.oid = oid
     self.constantOid = constantOid
     self.owner = owner
     self.role = role
-    self.touchpoints = touchpoints
   }
 
   public var isBlock: Bool { classID.starts(with: NcStandardModel.block) }
@@ -71,6 +68,10 @@ public protocol NcObjectSource: Sendable {
     session: NcSession
   ) async -> NcMethodResult
 
+  /// The resources of other specifications the object stands for (`touchpoints`, 1p7);
+  /// nil if it stands for none. Asked only when 1p7 is read.
+  func touchpoints(of oid: NcOid) async -> [NcTouchpoint]?
+
   /// The constraints on the object's properties that are its own and not its class's
   /// (`runtimePropertyConstraints`, 1p8), as `NcPropertyConstraints` objects; empty if
   /// it has none.
@@ -97,6 +98,7 @@ public extension NcObjectSource {
   }
 
   func runtimeConstraints(of oid: NcOid, session: NcSession) async -> [NMOSJSONValue] { [] }
+  func touchpoints(of oid: NcOid) async -> [NcTouchpoint]? { nil }
   func classes() async -> [NcClassDescriptor] { [] }
   func datatypes() async -> [NcDatatypeDescriptor] { [] }
   func subscriptionsChanged(to oids: Set<NcOid>, session: NcSession) async {}
@@ -111,10 +113,9 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
 
   public let source: Source
 
-  /// Where each open session's events go.
-  private let listeners = Mutex([NcSession: AsyncStream<NcNotification>.Continuation]())
   /// What the class manager answers with, shared by every session.
   let descriptors = NcDescriptorCache()
+  let sequenceLocks = NcSequenceLocks()
 
   public init(source: Source) {
     self.source = source
@@ -150,19 +151,9 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
     return existing
   }
 
+  /// The source's events for the session; the source ends them when the session ends.
   public func notifications(for session: NcSession) -> AsyncStream<NcNotification> {
-    let (stream, continuation) = AsyncStream<NcNotification>.makeStream()
-    listeners.withLock { $0[session] = continuation }
-    let upstream = source.notifications(for: session)
-    let task = Task {
-      for await notification in upstream { continuation.yield(notification) }
-      continuation.finish()
-    }
-    continuation.onTermination = { [weak self] _ in
-      task.cancel()
-      self?.listeners.withLock { $0[session] = nil }
-    }
-    return stream
+    source.notifications(for: session)
   }
 
   public func subscriptionsChanged(to oids: Set<NcOid>, session: NcSession) async {
@@ -170,7 +161,6 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
   }
 
   public func sessionEnded(_ session: NcSession) async {
-    listeners.withLock { $0.removeValue(forKey: session) }?.finish()
     await source.sessionEnded(session)
   }
 }
@@ -200,9 +190,8 @@ final class NcDescriptorCache: Sendable {
     let datatypes: NMOSJSONValue
   }
 
-  // An entry is never invalidated: a class ID or a datatype name stands for one
-  // definition for as long as the process runs, so what was built for it once is
-  // what it will always be. Only the lists depend on which classes have objects.
+  // The entries are built from the source's lists, so they go when the lists change:
+  // a source may describe a class more fully once it has an object of it.
   private let _cache = Mutex([Key: Entry]())
   private let _lists = Mutex<Lists?>(nil)
 
@@ -233,7 +222,36 @@ final class NcDescriptorCache: Sendable {
       datatypes: .array((NcStandardModel.datatypes + datatypes).map(\.json))
     )
     _lists.withLock { $0 = lists }
+    _cache.withLock { $0.removeAll() }
     return lists
+  }
+}
+
+/// Holds each sequence property while one session changes it, so that changes made by
+/// reading the whole sequence and writing it back are made one at a time.
+actor NcSequenceLocks {
+  struct Key: Hashable, Sendable {
+    let oid: NcOid
+    let property: NcElementID
+  }
+
+  private var held = Set<Key>()
+  private var waiting = [Key: [CheckedContinuation<Void, Never>]]()
+
+  func acquire(_ key: Key) async {
+    guard !held.insert(key).inserted else { return }
+    await withCheckedContinuation { waiting[key, default: []].append($0) }
+  }
+
+  /// Hands the property to the next session waiting for it, if there is one.
+  func release(_ key: Key) {
+    guard var queue = waiting[key], !queue.isEmpty else {
+      held.remove(key)
+      return
+    }
+    let next = queue.removeFirst()
+    waiting[key] = queue.isEmpty ? nil : queue
+    next.resume()
   }
 }
 

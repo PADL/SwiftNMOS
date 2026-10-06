@@ -26,7 +26,6 @@ import SwiftOCADevice
 struct NMOSOcaPropertyBinding: Sendable {
   enum Value: Sendable {
     case constant(NMOSJSONValue)
-    /// An OCA property, read and written through its accessor methods.
     /// An OCA property, read and written through its accessor methods; one of a standard
     /// property may be presented in a standard form of its type's own.
     case property(OcaDevicePropertyDescriptor, NMOSOcaSchema?, (any NMOSOcaStandardValue.Type)? = nil)
