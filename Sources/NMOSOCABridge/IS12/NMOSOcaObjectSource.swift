@@ -439,26 +439,21 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   /// A method of one of the object's non-standard classes: the object model has already
   /// answered the standard ones, so what is not in the class is not a method.
-  public func invoke(
-    oid: NcOid,
-    methodID: NcElementID,
-    arguments: [String: NMOSJSONValue],
-    session: NcSession
-  ) async -> NcMethodResult {
-    guard let entry = await entry(oid) else { return .error(.badOid, "No object with oid \(oid)") }
+  public func handleCommand(_ command: NcCommand, session: NcSession) async -> NcMethodResult {
+    guard let entry = await entry(command.oid) else { return .error(.badOid, "No object with oid \(command.oid)") }
     let controlClass = classes.controlClass(of: entry.object, role: entry.role)
-    guard let method = controlClass.methods[methodID] else {
-      return .error(.methodNotImplemented, "No method \(methodID.level)m\(methodID.index)")
+    guard let method = controlClass.methods[command.methodID] else {
+      return .error(.methodNotImplemented, "No method \(command.methodID.level)m\(command.methodID.index)")
     }
-    return await invoke(method, on: entry.object, arguments, as: controller(for: session))
+    return await send(method, to: entry.object, command.arguments, as: controller(for: session))
   }
 
   /// The arguments go to the OCA method by their OCP.2 names, so the device decodes and
   /// checks them as it would a controller's. One result is the result's `value`; several
   /// are its fields, by their OCP.2 names, as the method's result datatype describes them.
-  private func invoke(
+  private func send(
     _ method: NMOSOcaMethodBinding,
-    on object: SwiftOCADevice.OcaRoot,
+    to object: SwiftOCADevice.OcaRoot,
     _ arguments: [String: NMOSJSONValue],
     as controller: NMOSOcaControlController
   ) async -> NcMethodResult {
@@ -475,7 +470,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     }
     let (status, answer) = await send(method.methodID, to: object, parameters, as: controller)
     guard status == .ok else {
-      return .error(status.ncStatus(.invoke), "Method \(method.methodID) failed: \(status)")
+      return .error(status.ncStatus(.method), "Method \(method.methodID) failed: \(status)")
     }
     do {
       var results = [String: NMOSJSONValue]()
@@ -641,7 +636,7 @@ private struct NMOSOcaMissingAnswer: Error, CustomStringConvertible {
 
 /// What a command to an OCA object was sent for, which decides what not implemented means.
 private enum NMOSOcaAccess {
-  case get, set, invoke
+  case get, set, method
 }
 
 private extension OcaStatus {
@@ -658,7 +653,7 @@ private extension OcaStatus {
       case .get: .propertyNotImplemented
       // a setter that is declared but not implemented: the property cannot be set
       case .set: .readonly
-      case .invoke: .methodNotImplemented
+      case .method: .methodNotImplemented
       }
     case .invalidRequest: .invalidRequest
     case .timeout: .timeout

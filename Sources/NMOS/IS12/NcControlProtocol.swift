@@ -119,11 +119,9 @@ final class NcControlSession: Sendable {
       // in order, as a later command can depend on an earlier one's effect
       var responses = [(handle: Int64, result: NcMethodResult)]()
       for command in commands {
-        let result: NcMethodResult = switch command.target {
-        case let .success(target):
-          await model.invoke(
-            oid: target.oid, methodID: target.methodID, arguments: target.arguments, session: session
-          )
+        let result: NcMethodResult = switch command.command {
+        case let .success(command):
+          await model.handleCommand(command, session: session)
         case let .failure(error):
           .error(error.status, error.message)
         }

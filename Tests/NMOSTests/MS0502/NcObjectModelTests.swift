@@ -154,8 +154,9 @@ final class NcObjectModelTests: XCTestCase {
   }
 
   private func invoke(_ oid: NcOid, _ level: UInt16, _ index: UInt16, _ arguments: [String: NMOSJSONValue] = [:]) async -> NcMethodResult {
-    await model.invoke(
-      oid: oid, methodID: .init(level: level, index: index), arguments: arguments, session: session
+    await model.handleCommand(
+      NcCommand(oid: oid, methodID: .init(level: level, index: index), arguments: arguments),
+      session: session
     )
   }
 

@@ -138,8 +138,9 @@ final class NMOSOcaMethodTests: XCTestCase {
     _ index: UInt16,
     _ arguments: [String: NMOSJSONValue] = [:]
   ) async -> NcMethodResult {
-    await model.invoke(
-      oid: oid(of: object), methodID: .init(level: level, index: index), arguments: arguments, session: session
+    await model.handleCommand(
+      NcCommand(oid: oid(of: object), methodID: .init(level: level, index: index), arguments: arguments),
+      session: session
     )
   }
 
@@ -147,18 +148,18 @@ final class NMOSOcaMethodTests: XCTestCase {
   @OcaDevice
   private func classDescriptor(of object: SwiftOCADevice.OcaRoot) async throws -> NMOSJSONValue {
     let classID = await invoke(object, 1, 1, ["id": NcElementID(level: 1, index: 1).json]).value
-    let result = await model.invoke(
-      oid: model.classManagerOid, methodID: .init(level: 3, index: 1),
-      arguments: ["classId": try XCTUnwrap(classID), "includeInherited": true], session: session
+    let result = await model.handleCommand(
+      NcCommand(oid: model.classManagerOid, methodID: .init(level: 3, index: 1), arguments: ["classId": try XCTUnwrap(classID), "includeInherited": true]),
+      session: session
     )
     return try XCTUnwrap(result.value, result.errorMessage ?? "")
   }
 
   @OcaDevice
   private func datatype(_ name: String) async throws -> NMOSJSONValue {
-    let result = await model.invoke(
-      oid: model.classManagerOid, methodID: .init(level: 3, index: 2),
-      arguments: ["name": .string(name), "includeInherited": false], session: session
+    let result = await model.handleCommand(
+      NcCommand(oid: model.classManagerOid, methodID: .init(level: 3, index: 2), arguments: ["name": .string(name), "includeInherited": false]),
+      session: session
     )
     return try XCTUnwrap(result.value, result.errorMessage ?? "")
   }
@@ -326,9 +327,9 @@ final class NMOSOcaMethodTests: XCTestCase {
   @OcaDevice
   func testALockedObjectRefusesAMethodThatWrites() async throws {
     let other = NcSession(peer: .ip("192.0.2.12", port: 50002))
-    _ = await model.invoke(
-      oid: oid(of: MethodFixture.gain), methodID: .init(level: 1, index: 1),
-      arguments: ["id": NcElementID(level: 1, index: 6).json], session: other
+    _ = await model.handleCommand(
+      NcCommand(oid: oid(of: MethodFixture.gain), methodID: .init(level: 1, index: 1), arguments: ["id": NcElementID(level: 1, index: 6).json]),
+      session: other
     )
     let controller = try XCTUnwrap(model.source.controller(of: other))
     let lock = Ocp1Command(targetONo: MethodFixture.gain.objectNumber, methodID: OcaMethodID("1.3"))

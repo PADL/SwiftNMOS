@@ -26,22 +26,16 @@ enum NcMessageType: Int64, Sendable {
   case error = 5
 }
 
-/// One command of a Command message. A command whose handle can be read but whose
-/// target cannot is still answered, with the reason, under that handle.
-struct NcCommand: Sendable, Equatable {
-  struct Target: Sendable, Equatable {
-    var oid: NcOid
-    var methodID: NcElementID
-    var arguments: [String: NMOSJSONValue]
-  }
-
+/// One command of a Command message, under its handle. A command whose handle can be
+/// read but whose oid, method or arguments cannot is still answered, with the reason.
+struct NcHandledCommand: Sendable, Equatable {
   var handle: Int64
-  var target: Result<Target, NcProtocolError>
+  var command: Result<NcCommand, NcProtocolError>
 }
 
 /// What a controller can send.
 enum NcIncomingMessage: Sendable, Equatable {
-  case commands([NcCommand])
+  case commands([NcHandledCommand])
   case subscription([NcOid])
 }
 
@@ -92,12 +86,12 @@ enum NcProtocolCodec {
     }
   }
 
-  private static func command(_ json: NMOSJSONValue) throws(NcProtocolError) -> NcCommand {
+  private static func command(_ json: NMOSJSONValue) throws(NcProtocolError) -> NcHandledCommand {
     // without a handle there is nothing to answer under, so the whole message fails
     guard let handle = json["handle"]?.integerValue, handles.contains(handle) else {
       throw NcProtocolError("A command needs an integer handle from 1 to 65535")
     }
-    return NcCommand(handle: handle, target: Result { () throws(NcProtocolError) in
+    return NcHandledCommand(handle: handle, command: Result { () throws(NcProtocolError) in
       guard let oid = json["oid"]?.integerValue.flatMap(NcOid.init(exactly:)) else {
         throw NcProtocolError("The command has no valid oid")
       }
@@ -108,7 +102,7 @@ enum NcProtocolCodec {
       guard arguments.isNull || arguments.objectValue != nil else {
         throw NcProtocolError("The command's arguments are not an object")
       }
-      return .init(oid: oid, methodID: methodID, arguments: arguments.objectValue ?? [:])
+      return NcCommand(oid: oid, methodID: methodID, arguments: arguments.objectValue ?? [:])
     })
   }
 

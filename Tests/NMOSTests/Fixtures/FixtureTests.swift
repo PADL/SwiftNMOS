@@ -58,19 +58,21 @@ final class FixtureTests: XCTestCase {
     let propertyID = try NMOSJSONValue(encoding: userLabel)
 
     let session = NcSession(peer: nil)
-    let read = await model.invoke(
-      oid: 1, methodID: FixtureDeviceModel.get, arguments: ["id": propertyID], session: session
+    let read = await model.handleCommand(
+      NcCommand(oid: 1, methodID: FixtureDeviceModel.get, arguments: ["id": propertyID]),
+      session: session
     )
     XCTAssertEqual(read, NcMethodResult(value: "Root"))
-    let missing = await model.invoke(
-      oid: 2, methodID: FixtureDeviceModel.get, arguments: ["id": propertyID], session: session
+    let missing = await model.handleCommand(
+      NcCommand(oid: 2, methodID: FixtureDeviceModel.get, arguments: ["id": propertyID]),
+      session: session
     )
     XCTAssertEqual(missing.status, .badOid)
     XCTAssertTrue(missing.status.isError)
 
     var notifications = model.notifications(for: session).makeAsyncIterator()
-    let written = await model.invoke(
-      oid: 1, methodID: FixtureDeviceModel.set, arguments: ["id": propertyID, "value": "Device"],
+    let written = await model.handleCommand(
+      NcCommand(oid: 1, methodID: FixtureDeviceModel.set, arguments: ["id": propertyID, "value": "Device"]),
       session: session
     )
     XCTAssertEqual(written.status, .ok)

@@ -52,9 +52,11 @@ and a session must not be able to lock objects against AES70 controllers.
 
 ## Standard methods take precedence by structure
 
-`NcObjectModel` answers every standard method itself before asking the source: NcObject's
-`1m1`–`1m7` for every object, NcBlock's `2m1`–`2m4` for a block, NcClassManager's for the
-class manager. With OcaRoot excluded, every presented AES70 class has L ≥ 2 and so every AES70
+`NcObjectModel` answers every standard method itself before asking the source, through a
+class for each standard class (`NcObject`, `NcBlock`, `NcClassManager`) that handles its
+own methods and passes the rest to the class it derives from, as SwiftOCA's classes do:
+NcObject's `1m1`–`1m7` for every object, NcBlock's `2m1`–`2m4` for a block,
+NcClassManager's for the class manager. With OcaRoot excluded, every presented AES70 class has L ≥ 2 and so every AES70
 method lands at level N + 1 or below, under every standard class in the lineage; no
 renumbering is needed, and no method is excluded by name or by class. Checked over every
 method table in SwiftOCADevice and in one vendor device: the only collisions are OcaRoot's, and
@@ -96,7 +98,7 @@ A method the device refuses to a controller is still presented: the device's
 `PermissionDenied` is the session's `Unauthorized` when it is called, as over OCP.1 and
 OCP.2.
 
-`NMOSOcaObjectSource.invoke` serves a presented method from the class's `methods`, keyed by
+`NMOSOcaObjectSource.handleCommand` serves a presented method from the class's `methods`, keyed by
 the mapped `NcElementID`. Each IS-12 argument is looked up by its OCP.2 name (a missing one
 is `ParameterError`) and converted by its schema, and the command goes to the device as the
 session's own OCP.2 controller, so the device's method table decodes it and makes the lock

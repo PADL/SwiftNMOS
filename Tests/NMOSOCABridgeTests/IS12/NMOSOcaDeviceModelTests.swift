@@ -213,9 +213,9 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   private func get(
     _ oid: NcOid, _ level: UInt16, _ index: UInt16, as session: NcSession? = nil
   ) async -> NcMethodResult {
-    await model.invoke(
-      oid: oid, methodID: .init(level: 1, index: 1),
-      arguments: ["id": NcElementID(level: level, index: index).json], session: session ?? self.session
+    await model.handleCommand(
+      NcCommand(oid: oid, methodID: .init(level: 1, index: 1), arguments: ["id": NcElementID(level: level, index: index).json]),
+      session: session ?? self.session
     )
   }
 
@@ -223,26 +223,26 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   private func set(
     _ oid: NcOid, _ level: UInt16, _ index: UInt16, _ value: NMOSJSONValue, as session: NcSession? = nil
   ) async -> NcMethodResult {
-    await model.invoke(
-      oid: oid, methodID: .init(level: 1, index: 2),
-      arguments: ["id": NcElementID(level: level, index: index).json, "value": value],
+    await model.handleCommand(
+      NcCommand(oid: oid, methodID: .init(level: 1, index: 2), arguments: ["id": NcElementID(level: level, index: index).json, "value": value]),
       session: session ?? self.session
     )
   }
 
   @OcaDevice
   private func members(of oid: NcOid, recurse: Bool = false) async -> [NMOSJSONValue] {
-    await model.invoke(
-      oid: oid, methodID: .init(level: 2, index: 1), arguments: ["recurse": .bool(recurse)], session: session
+    await model.handleCommand(
+      NcCommand(oid: oid, methodID: .init(level: 2, index: 1), arguments: ["recurse": .bool(recurse)]),
+      session: session
     )
       .value?.arrayValue ?? []
   }
 
   @OcaDevice
   private func classDescriptor(_ classID: NcClassID, inherited: Bool = false) async throws -> NMOSJSONValue {
-    let result = await model.invoke(
-      oid: model.classManagerOid, methodID: .init(level: 3, index: 1),
-      arguments: ["classId": classID.json, "includeInherited": .bool(inherited)], session: session
+    let result = await model.handleCommand(
+      NcCommand(oid: model.classManagerOid, methodID: .init(level: 3, index: 1), arguments: ["classId": classID.json, "includeInherited": .bool(inherited)]),
+      session: session
     )
     return try XCTUnwrap(result.value, "no class \(classID): \(result.errorMessage ?? "")")
   }

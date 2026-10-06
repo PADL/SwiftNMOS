@@ -88,7 +88,10 @@ final class NMOSOcaMeteringTests: XCTestCase {
   private func invoke(
     _ object: SwiftOCADevice.OcaRoot, _ id: NcElementID, _ arguments: [String: NMOSJSONValue] = [:]
   ) async -> NcMethodResult {
-    await model.invoke(oid: NcOid(object.objectNumber), methodID: id, arguments: arguments, session: session)
+    await model.handleCommand(
+      NcCommand(oid: NcOid(object.objectNumber), methodID: id, arguments: arguments),
+      session: session
+    )
   }
 
   @OcaDevice
@@ -101,9 +104,9 @@ final class NMOSOcaMeteringTests: XCTestCase {
   private func elements(_ kind: String, of object: SwiftOCADevice.OcaRoot) async throws -> [String: NcElementID] {
     let classIDResult = await get(object, .init(level: 1, index: 1))
     let classID = try XCTUnwrap(classIDResult.value)
-    let result = await model.invoke(
-      oid: model.classManagerOid, methodID: .init(level: 3, index: 1),
-      arguments: ["classId": classID, "includeInherited": true], session: session
+    let result = await model.handleCommand(
+      NcCommand(oid: model.classManagerOid, methodID: .init(level: 3, index: 1), arguments: ["classId": classID, "includeInherited": true]),
+      session: session
     )
     let elements = try XCTUnwrap(result.value?[kind]?.arrayValue, result.errorMessage ?? "")
     return Dictionary(elements.compactMap { element in

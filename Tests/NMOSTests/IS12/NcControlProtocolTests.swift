@@ -25,7 +25,7 @@ import XCTest
 /// session every command was for, its subscriptions, and its end.
 private final class RecordingDeviceModel: NcDeviceModel {
   let fixture: FixtureDeviceModel
-  let invoked = Mutex([NcSession]())
+  let handled = Mutex([NcSession]())
   let subscriptions = Mutex([NcSession: Set<NcOid>]())
   let ended = Mutex([NcSession]())
 
@@ -33,14 +33,9 @@ private final class RecordingDeviceModel: NcDeviceModel {
     fixture = FixtureDeviceModel(objects: objects)
   }
 
-  func invoke(
-    oid: NcOid,
-    methodID: NcElementID,
-    arguments: [String: NMOSJSONValue],
-    session: NcSession
-  ) async -> NcMethodResult {
-    invoked.withLock { $0.append(session) }
-    return await fixture.invoke(oid: oid, methodID: methodID, arguments: arguments, session: session)
+  func handleCommand(_ command: NcCommand, session: NcSession) async -> NcMethodResult {
+    handled.withLock { $0.append(session) }
+    return await fixture.handleCommand(command, session: session)
   }
 
   func subscribable(_ oids: [NcOid], session: NcSession) async -> [NcOid] {
@@ -293,7 +288,7 @@ final class NcControlProtocolTests: XCTestCase {
         "arguments": {"id": {"level": 1, "index": 6}}}]}
       """)
     }
-    XCTAssertEqual(model.invoked.withLock { $0 }, [first.session, second.session, first.session])
+    XCTAssertEqual(model.handled.withLock { $0 }, [first.session, second.session, first.session])
 
     // and each session's subscriptions are its own
     _ = try await first.exchange(#"{"messageType": 3, "subscriptions": [1, 100]}"#)

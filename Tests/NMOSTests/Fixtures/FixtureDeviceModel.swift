@@ -37,12 +37,8 @@ final class FixtureDeviceModel: NcDeviceModel {
     objects.withLock { $0[oid]?[property] }
   }
 
-  func invoke(
-    oid: NcOid,
-    methodID: NcElementID,
-    arguments: [String: NMOSJSONValue],
-    session: NcSession
-  ) async -> NcMethodResult {
+  func handleCommand(_ command: NcCommand, session: NcSession) async -> NcMethodResult {
+    let (oid, methodID, arguments) = (command.oid, command.methodID, command.arguments)
     guard let properties = objects.withLock({ $0[oid] }) else {
       return .error(.badOid, "no object \(oid)")
     }

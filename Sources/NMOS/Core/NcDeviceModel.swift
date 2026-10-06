@@ -131,18 +131,27 @@ public struct NcSession: Sendable, Hashable, CustomStringConvertible {
   }
 }
 
+/// A method of an object, with its arguments, as an IS-12 command carries it. Reading a
+/// property is a command too (`NcObject.Get`). `arguments` is keyed by the parameter
+/// names of the method's descriptor.
+public struct NcCommand: Sendable, Equatable {
+  public var oid: NcOid
+  public var methodID: NcElementID
+  public var arguments: [String: NMOSJSONValue]
+
+  public init(oid: NcOid, methodID: NcElementID, arguments: [String: NMOSJSONValue] = [:]) {
+    self.oid = oid
+    self.methodID = methodID
+    self.arguments = arguments
+  }
+}
+
 /// The device's MS-05-02 object model, as the IS-12 protocol engine drives it. Every
 /// interaction is a method on an object, including reading a property (`NcObject.Get`),
 /// so the engine needs no knowledge of the classes behind it.
 public protocol NcDeviceModel: Sendable {
-  /// Invokes a method for a session. `arguments` is keyed by the parameter names of
-  /// the method's descriptor. Failures are reported in the result, never thrown.
-  func invoke(
-    oid: NcOid,
-    methodID: NcElementID,
-    arguments: [String: NMOSJSONValue],
-    session: NcSession
-  ) async -> NcMethodResult
+  /// Handles a command for a session. Failures are reported in the result, never thrown.
+  func handleCommand(_ command: NcCommand, session: NcSession) async -> NcMethodResult
 
   /// The members of `oids` that exist and that the session can subscribe to.
   func subscribable(_ oids: [NcOid], session: NcSession) async -> [NcOid]
