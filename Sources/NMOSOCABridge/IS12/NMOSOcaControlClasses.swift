@@ -151,11 +151,8 @@ final class NMOSOcaControlClasses {
     for (depth, ocaClass) in lineage.presented {
       // a class ID names every class above it, and each is to be described, whether or
       // not a class of the object stands for it
-      for unstated in ocaClass.classID.classIDs(after: lineage[depth - 1].classID) {
-        descriptors.append(NcClassDescriptor(
-          classID: anchor.nc + [mapping.authorityKey] + unstated.ncIndices,
-          name: unstated.className
-        ))
+      descriptors += ocaClass.classID.classIDs(after: lineage[depth - 1].classID).map { unstated in
+        NcClassDescriptor(classID: anchor.nc + [mapping.authorityKey] + unstated.ncIndices, name: unstated.className)
       }
       // a class's level is its depth by its ID, as OCA has it too
       let level = ocaClass.classID.ncLevel(under: anchor.nc)
@@ -332,8 +329,7 @@ final class NMOSOcaControlClasses {
   private func candidates(in ocaClass: OcaDeviceClassDescriptor) -> [OcaDeviceMethodDescriptor] {
     let accessors = Set(ocaClass.properties.flatMap { [$0.getMethodID, $0.setMethodID] }.compactMap(\.self))
     // a subclass that declares a method again is the one it is dispatched to
-    var methods = [OcaMethodID: OcaDeviceMethodDescriptor]()
-    for method in ocaClass.methods { methods[method.methodID] = method }
+    let methods = Dictionary(ocaClass.methods.map { ($0.methodID, $0) }, uniquingKeysWith: { _, last in last })
     return methods.values.sorted { $0.methodID.methodIndex < $1.methodID.methodIndex }.filter { method in
       guard !accessors.contains(method.methodID) else { return false }
       return method.isDescribed
