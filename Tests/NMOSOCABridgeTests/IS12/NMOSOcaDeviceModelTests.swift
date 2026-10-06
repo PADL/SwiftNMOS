@@ -499,7 +499,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   }
 
   @OcaDevice
-  func testAPropertyTheDeviceWillNotSetIsReadOnlyToTheNetwork() async throws {
+  func testAPropertyWithASetterIsWritableUntilTheDeviceRefuses() async throws {
     let aes = Fixture.aes
     let device = OcaDevice.shared
     let fixed = try await FixedMidpointPan(role: "Pan", deviceDelegate: device, addToRootBlock: false)
@@ -507,35 +507,20 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     try await Fixture.block.add(actionObject: fixed)
     try await Fixture.block.add(actionObject: plain)
 
-    // OCA gives both a setter; the device refuses one of them, which is found out
-    // without setting anything
+    // OCA gives both a setter, so both are described as writable
     let descriptor = try await classDescriptor([1, 2, aes, 1, 1, 6])
     let properties = descriptor["properties"]?.arrayValue ?? []
     XCTAssertEqual(properties.map { $0["name"] }, ["position", "midpointGain"])
-    XCTAssertEqual(properties.map { $0["isReadOnly"] }, [false, true])
-    XCTAssertEqual(fixed.position.value, 0)
+    XCTAssertEqual(properties.map { $0["isReadOnly"] }, [false, false])
 
+    // the device refuses one, when it is set
     let refused = await set(fixed.objectNumber, 5, 2, 0.0)
     XCTAssertEqual(refused.status, .readonly)
     let moved = await set(fixed.objectNumber, 5, 1, 0.5)
     XCTAssertEqual(moved.status, .ok)
     XCTAssertEqual(fixed.position.value, 0.5)
-
-    // classes that share an OCA class ID are one class, read only where any is; a
-    // local controller is still answered by the device itself
-    let alsoRefused = await set(plain.objectNumber, 5, 2, 0.0)
-    XCTAssertEqual(alsoRefused.status, .readonly)
-    let local = NcSession(peer: .local("/run/ocad/control.socket"))
-    let allowed = await set(plain.objectNumber, 5, 2, 0.0, as: local)
+    let allowed = await set(plain.objectNumber, 5, 2, 0.0)
     XCTAssertEqual(allowed.status, .ok)
-    await model.sessionEnded(local)
-
-    // what only a local controller may write is described as it is to the network
-    let agent = try await classDescriptor([1, aes, 2, Fixture.padl, 9])
-    XCTAssertEqual(agent["properties"]?.arrayValue?.map { $0["isReadOnly"] }, [true, true])
-    // and what the network may write is unchanged by having been asked about
-    let gain = try await classDescriptor([1, 2, aes, 1, 1, 5])
-    XCTAssertEqual(gain["properties"]?.arrayValue?.map { $0["isReadOnly"] }, [false])
   }
 
   @OcaDevice

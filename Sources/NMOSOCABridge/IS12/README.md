@@ -100,9 +100,7 @@ be invoked by the same rules, under the vendor's authority key, as they may over
 and OCP.2. They are not described, though, unless the package is built with the
 `DescribeVendorMethods` trait (`NMOSOcaControlClasses.describesMethods`); a vendor
 class's properties are described either way. Which of a class's methods are candidates is
-decided in one place, `NMOSOcaControlClasses.candidates`. Swift classes that share an OCA
-class ID are one class to IS-12: a setter any of them refuses to the network makes the
-property read only for the class.
+decided in one place, `NMOSOcaControlClasses.candidates`.
 
 Decisions:
 
@@ -112,6 +110,9 @@ Decisions:
 - A property with a getter is described whether or not the device lets the session read
   it. Whether to answer a `Get` is the device's to decide, on each request: its
   `PermissionDenied` is the session's `Unauthorized`.
+- A property is read only exactly when it has no setter. One with a setter is described
+  as writable, and the device may still refuse a `Set`: its `PermissionDenied` or
+  `NotImplemented` is the session's `Readonly`.
 - `OcaONo`-typed parameters and results are presented as the raw AES70 object numbers,
   as `OcaONo` properties already are; an oid differs only for the root block and the
   device manager.

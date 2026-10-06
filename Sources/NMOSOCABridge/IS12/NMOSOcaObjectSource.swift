@@ -319,39 +319,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   /// How the object's class is presented, worked out the first time one is met.
   private func controlClass(of object: SwiftOCADevice.OcaRoot, role: String) async -> NMOSOcaControlClass {
-    let describer = await describer()
-    return await classes.controlClass(of: object, role: role) { property, schema in
-      await self.isWritable(property, schema: schema, of: object, as: describer)
-    }
-  }
-
-  /// Whether the device lets a controller with no privilege set the property, found
-  /// out without setting it. The object is asked whether the setter may be used; and
-  /// the setter of a plain value is sent no value, which one that is implemented can
-  /// only refuse as malformed.
-  private func isWritable(
-    _ property: OcaDevicePropertyDescriptor,
-    schema: NMOSOcaSchema?,
-    of object: SwiftOCADevice.OcaRoot,
-    as describer: NMOSOcaControlController
-  ) async -> Bool {
-    guard let setter = property.setMethodID else { return false }
-    handle &+= 1
-    let command = Ocp1Command(
-      handle: handle, targetONo: object.objectNumber, methodID: setter,
-      parameters: OcaParameters(ocp2Parameters: [:])
-    )
-    do {
-      try await object.ensureWritable(by: describer, command: command)
-    } catch Ocp1Error.status(.permissionDenied) {
-      return false
-    } catch {
-      // locked, or not ready: how things stand now, not what the property is
-    }
-    // only where no value cannot be mistaken for a value, as nil could for an optional
-    guard let schema, schema.isPlain else { return true }
-    let status = await device.handleCommand(command, from: describer).statusCode
-    return status != .notImplemented && status != .permissionDenied
+    await classes.controlClass(of: object, role: role)
   }
 
   // MARK: - Properties
@@ -430,14 +398,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       let binding = NMOSOcaPropertyBinding(value: .property(label, .string, .identity), isReadOnly: false)
       result = await write(binding, of: entry.object, value, as: controller)
     } else if let binding = controlClass.properties[property] {
-      // what the class is described as, every object of it keeps to; and the classes
-      // that share its ID have all to have been met before that is known
-      if !controller.flags.contains(.isLocal) {
-        await describeEveryObject()
-        guard !classes.isRefused(property, of: controlClass) else {
-          return .error(.readonly, "The property is read only")
-        }
-      }
       result = await write(binding, of: entry.object, value, as: controller)
     } else {
       return .error(.propertyNotImplemented, "No property \(property.level)p\(property.index)")

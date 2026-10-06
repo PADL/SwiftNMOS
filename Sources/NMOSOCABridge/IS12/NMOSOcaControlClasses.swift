@@ -76,12 +76,6 @@ final class NMOSOcaControlClasses {
   /// Every non-standard class of the objects met so far, each once, made again when a
   /// class not met before is described.
   private(set) var descriptors = [NcClassDescriptor]()
-  /// The properties the device will not let a controller on the network set though they
-  /// have setters, by the class that defines them. Swift classes that share an OCA
-  /// class ID are one class here, so what any of them refuses the class is read only for.
-  private var refused = [NcClassID: Set<NcElementID>]()
-  /// The classes being described, which another object of one waits for.
-  private var describing = [ObjectIdentifier: Task<NMOSOcaControlClass, Never>]()
 
   nonisolated init(mapping: NMOSOcaControlMapping, logger: Logger) {
     self.mapping = mapping
@@ -92,43 +86,15 @@ final class NMOSOcaControlClasses {
     var seen = Set<NcClassID>()
     return classes.values.flatMap(\.descriptors).filter { seen.insert($0.classID).inserted }
       .sorted { $0.classID.lexicographicallyPrecedes($1.classID) }
-      .map { descriptor in
-        var descriptor = descriptor
-        guard let refused = refused[descriptor.classID] else { return descriptor }
-        for index in descriptor.properties.indices where refused.contains(descriptor.properties[index].id) {
-          descriptor.properties[index].isReadOnly = true
-        }
-        return descriptor
-      }
   }
-
-  /// Whether a property of an object of the class is one the device refuses a
-  /// controller on the network, and so is described as read only.
-  func isRefused(_ property: NcElementID, of controlClass: NMOSOcaControlClass) -> Bool {
-    controlClass.descriptors.contains { descriptor in
-      descriptor.properties.contains { $0.id == property } && refused[descriptor.classID]?.contains(property) == true
-    }
-  }
-
-  /// Whether the device lets a controller on the network set a property that has a
-  /// setter. One it does not is read only to such a controller: OCA classes declare
-  /// setters that a device then refuses to all, or to all but a local controller.
-  typealias Writable = @Sendable @OcaDevice (OcaDevicePropertyDescriptor, NMOSOcaSchema?) async -> Bool
 
   func controlClass(
     of object: SwiftOCADevice.OcaRoot,
-    role: String,
-    writable: @escaping Writable
-  ) async -> NMOSOcaControlClass {
+    role: String
+  ) -> NMOSOcaControlClass {
     let type = ObjectIdentifier(type(of: object))
     if let known = classes[type] { return known }
-    if let pending = describing[type] { return await pending.value }
-    let describing = Task { @OcaDevice in
-      await self.describe(object, role: role, writable: writable)
-    }
-    self.describing[type] = describing
-    let controlClass = await describing.value
-    self.describing[type] = nil
+    let controlClass = describe(object, role: role)
     classes[type] = controlClass
     descriptors = listDescriptors()
     return controlClass
@@ -156,9 +122,8 @@ final class NMOSOcaControlClasses {
 
   private func describe(
     _ object: SwiftOCADevice.OcaRoot,
-    role: String,
-    writable: Writable
-  ) async -> NMOSOcaControlClass {
+    role: String
+  ) -> NMOSOcaControlClass {
     let lineage = object.deviceClassDescriptors
     let anchored = anchors(in: lineage)
     guard let anchor = anchored.max(by: { $0.depth < $1.depth })?.anchor else {
@@ -170,7 +135,7 @@ final class NMOSOcaControlClasses {
     )
 
     var presentation = Presentation()
-    await presentStandardProperties(of: anchored.map(\.anchor), under: anchor, declared, into: &presentation)
+    presentStandardProperties(of: anchored.map(\.anchor), under: anchor, declared, into: &presentation)
     let label = userLabel(in: declared)
     if let label {
       presentation.consumed.insert(label.propertyID)
@@ -192,8 +157,8 @@ final class NMOSOcaControlClasses {
       }
       // a class's level is its depth by its ID, as OCA has it too
       let level = Self.level(of: ocaClass.classID, under: anchor.nc)
-      let described = await describe(
-        ocaClass: ocaClass, at: level, under: anchor, consumed: presentation.consumed, writable: writable
+      let described = describe(
+        ocaClass: ocaClass, at: level, under: anchor, consumed: presentation.consumed
       )
       presentation.properties.merge(described.properties) { _, new in new }
       presentation.methods.merge(described.methods) { _, new in new }
@@ -257,18 +222,17 @@ final class NMOSOcaControlClasses {
     ocaClass: OcaDeviceClassDescriptor,
     at level: UInt16,
     under anchor: NMOSOcaControlMapping.Anchor,
-    consumed: Set<OcaPropertyID>,
-    writable: Writable,
-  ) async -> ClassPresentation {
+    consumed: Set<OcaPropertyID>
+  ) -> ClassPresentation {
     var described = ClassPresentation(descriptor: NcClassDescriptor(
       classID: anchor.nc + [mapping.authorityKey] + Self.fields(below: ocaClass.classID),
       name: Self.name(of: ocaClass.type)
     ))
     // (a vector is listed once, under the ID of its x component)
     for property in ocaClass.properties where !consumed.contains(property.propertyID) {
-      await present(property, of: ocaClass, at: level, writable: writable, into: &described)
+      present(property, of: ocaClass, at: level, into: &described)
     }
-    await presentMethods(of: ocaClass, at: level, under: anchor, into: &described)
+    presentMethods(of: ocaClass, at: level, under: anchor, into: &described)
     return described
   }
 
@@ -277,9 +241,8 @@ final class NMOSOcaControlClasses {
     _ property: OcaDevicePropertyDescriptor,
     of ocaClass: OcaDeviceClassDescriptor,
     at level: UInt16,
-    writable: Writable,
     into described: inout ClassPresentation
-  ) async {
+  ) {
     let className = described.descriptor.name
     guard property.getMethodID != nil else {
       logger.trace("\(className).\(property.name) has no getter, so it is not presented")
@@ -301,11 +264,8 @@ final class NMOSOcaControlClasses {
         components = [(property.name, property.propertyID, .property(property, schema, .identity))]
       }
       let reference = try datatypes.reference(to: schema)
+      // a setter is no promise: the device may still refuse a set when it is made
       let isReadOnly = !property.isSettable
-      if !isReadOnly, await !writable(property, schema) {
-        let ids = components.map { NcElementID(level: level, index: $0.id.propertyIndex) }
-        refused[described.descriptor.classID, default: []].formUnion(ids)
-      }
       for component in components {
         let id = NcElementID(level: level, index: component.id.propertyIndex)
         let binding = NMOSOcaPropertyBinding(value: component.binding, isReadOnly: isReadOnly)
@@ -330,7 +290,7 @@ final class NMOSOcaControlClasses {
     at level: UInt16,
     under anchor: NMOSOcaControlMapping.Anchor,
     into described: inout ClassPresentation
-  ) async {
+  ) {
     let className = described.descriptor.name
     for method in candidates(in: ocaClass, named: className) {
       let id = NcElementID(level: level, index: method.methodID.methodIndex)
