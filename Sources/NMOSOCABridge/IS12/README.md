@@ -36,9 +36,10 @@ To an OCA controller it describes the classes of the device's objects in OCA's t
 (`OcaClassDescriptor` and its property, method and parameter descriptors) that
 correspond to MS-05-02's. They and the controller's `OcaClassManager` are in the
 `SwiftOCAClassManager` library, which knows nothing of NMOS; a controller calls
-`OcaClassManager.register()` to resolve the device's class manager to it. IS-12
-presents it as a class derived from `NcClassManager`, with its two OCA methods beside
-MS-05-02's.
+`OcaClassManager.register()` to resolve the device's class manager to it. Its methods
+are NcClassManager's own in OCA's terms, so IS-12 presents it as `NcClassManager`
+exactly: its anchor is exact (`isExact`), and nothing of it or the OCA classes above it
+is presented beyond the standard class.
 
 ## The one exception: OcaRoot
 

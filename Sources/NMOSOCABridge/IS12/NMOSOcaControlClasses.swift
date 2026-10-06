@@ -131,7 +131,7 @@ final class NMOSOcaControlClasses {
   ) -> NMOSOcaControlClass {
     let lineage = object.deviceClassDescriptors
     let anchored = anchors(in: lineage)
-    guard let anchor = anchored.max(by: { $0.depth < $1.depth })?.anchor else {
+    guard let (anchorDepth, anchor) = anchored.max(by: { $0.depth < $1.depth }) else {
       // OcaRoot is always in the lineage, so only a mapping without it gets here
       return NMOSOcaControlClass(classID: NcStandardModel.object, properties: [:], standardIDs: [:], descriptors: [])
     }
@@ -151,7 +151,7 @@ final class NMOSOcaControlClasses {
 
     // what the OCA classes have beyond that, one non-standard class per OCA class
     var descriptors = [NcClassDescriptor]()
-    for (depth, ocaClass) in lineage.presented {
+    for (depth, ocaClass) in lineage.presented where !anchor.isExact || depth > anchorDepth {
       // a class ID names every class above it, and each is to be described, whether or
       // not a class of the object stands for it
       descriptors += ocaClass.classID.classIDs(after: lineage[depth - 1].classID).map { unstated in
