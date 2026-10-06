@@ -283,12 +283,12 @@ final class NMOSRegistrationTests: XCTestCase {
   func testBacksOffWhenNoRegistryAnswers() async throws {
     registry.override { _ in throw NMOSHTTPClientError.timedOut }
     await describe()
+    let started = ContinuousClock.now
     start()
-    // waits of 20, 40, 80, 80... ms: several attempts in half a second, but not a flood
-    try await Task.sleep(for: .milliseconds(500))
-    let attempts = registry.calls.count
-    XCTAssertGreaterThanOrEqual(attempts, 4)
-    XCTAssertLessThanOrEqual(attempts, 10)
+    // waits of 20, 40, 80, 80... ms: it keeps trying, but no sooner than the waits allow,
+    // however slow or fast the machine is
+    await eventually("the registry is tried four times") { registry.calls.count >= 4 }
+    XCTAssertGreaterThanOrEqual(started.duration(to: .now), .milliseconds(140))
 
     registry.override(nil)
     await eventually("the receiver is registered") { registry.holds("receiver", resources.receiver) }
