@@ -73,8 +73,9 @@ final class NMOSOcaControlClasses {
   let datatypes = NMOSOcaDatatypes()
   private let logger: Logger
   private var classes = [ObjectIdentifier: NMOSOcaControlClass]()
-  /// The list made from `classes`, kept until another class is met.
-  private var listed: [NcClassDescriptor]?
+  /// Every non-standard class of the objects met so far, each once, made again when a
+  /// class not met before is described.
+  private(set) var descriptors = [NcClassDescriptor]()
   /// The properties the device will not let a controller on the network set though they
   /// have setters, by the class that defines them. Swift classes that share an OCA
   /// class ID are one class here, so what any of them refuses the class is read only for.
@@ -87,12 +88,9 @@ final class NMOSOcaControlClasses {
     self.logger = logger
   }
 
-  /// Every non-standard class of the objects met so far, each once. The same list is
-  /// handed back until a class not met before is described.
-  var descriptors: [NcClassDescriptor] {
-    if let listed { return listed }
+  private func listDescriptors() -> [NcClassDescriptor] {
     var seen = Set<NcClassID>()
-    let descriptors = classes.values.flatMap(\.descriptors).filter { seen.insert($0.classID).inserted }
+    return classes.values.flatMap(\.descriptors).filter { seen.insert($0.classID).inserted }
       .sorted { $0.classID.lexicographicallyPrecedes($1.classID) }
       .map { descriptor in
         var descriptor = descriptor
@@ -102,8 +100,6 @@ final class NMOSOcaControlClasses {
         }
         return descriptor
       }
-    listed = descriptors
-    return descriptors
   }
 
   /// Whether a property of an object of the class is one the device refuses a
@@ -134,7 +130,7 @@ final class NMOSOcaControlClasses {
     let controlClass = await describing.value
     self.describing[type] = nil
     classes[type] = controlClass
-    listed = nil
+    descriptors = listDescriptors()
     return controlClass
   }
 
