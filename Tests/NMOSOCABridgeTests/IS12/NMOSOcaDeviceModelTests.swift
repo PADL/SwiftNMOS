@@ -735,7 +735,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     Fixture.localOnly.setting = "factory"
     await model.sessionEnded(local)
 
-    let controller = try await XCTUnwrap(model.source.controller(of: session))
+    let controller = try XCTUnwrap(model.source.controller(of: session))
     XCTAssertEqual(controller.flags, .supportsLocking)
     XCTAssertEqual(controller.controlProtocol, .ocp2)
     XCTAssertEqual(controller.description, "ncp/tcp/192.0.2.10:50000")
@@ -747,8 +747,8 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let other = NcSession(peer: .ip("192.0.2.20", port: 50000))
     _ = await get(gain, 5, 1)
     _ = await get(gain, 5, 1, as: other)
-    let mine = try await XCTUnwrap(model.source.controller(of: session))
-    let theirs = try await XCTUnwrap(model.source.controller(of: other))
+    let mine = try XCTUnwrap(model.source.controller(of: session))
+    let theirs = try XCTUnwrap(model.source.controller(of: other))
     XCTAssertFalse(mine === theirs)
     let listed = await model.source.endpoint.controllers
     XCTAssertTrue(listed.contains { $0 === mine } && listed.contains { $0 === theirs })
@@ -788,7 +788,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let ending = NcSession(peer: .ip("192.0.2.30", port: 50000))
     let events = model.notifications(for: ending)
     await model.subscriptionsChanged(to: [gain], session: ending)
-    let controller = try await XCTUnwrap(model.source.controller(of: ending))
+    let controller = try XCTUnwrap(model.source.controller(of: ending))
     let manager = await OcaDevice.shared.subscriptionManager
     let subscriptionManager = try XCTUnwrap(manager)
     XCTAssertTrue(subscriptionManager.isSubscribed(controller, toEventsFrom: gain))
