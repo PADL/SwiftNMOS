@@ -189,16 +189,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       for child in children {
         let childOid = mapping.oid(of: child.objectNumber)
         guard claimed.insert(childOid).inserted else { continue }
-        // a role names the object in its block: no dots, as they separate role paths
-        var childRole = child.role.replacingOccurrences(of: ".", with: "_")
-        let childClass = await controlClass(of: child, role: childRole).classID
-        if let fixed = NcStandardModel.fixedRole(of: childClass) {
-          childRole = fixed
-        }
-        if !roles.insert(childRole).inserted {
-          childRole += "_\(childOid)"
-          roles.insert(childRole)
-        }
+        let childRole = await nmosRole(of: child, oid: childOid, among: &roles)
         members.append(childOid)
         pending.append((child, oid, childRole))
       }
@@ -210,6 +201,21 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     let blocks = index.values.filter { $0.object is any OcaBlockContainer }.map(\.object.objectNumber)
     await observe(Set(blocks + [deviceManager.objectNumber]), deviceManager: deviceManager)
     indexed = changes == self.changes ? .now : nil
+  }
+
+  /// The role a child is presented under in its block, among the roles its siblings have
+  /// taken: its OCA role without dots, as they separate role paths; a standard class's
+  /// fixed role where it has one; and its oid appended where a sibling has the role.
+  private func nmosRole(of child: SwiftOCADevice.OcaRoot, oid: NcOid, among roles: inout Set<String>) async -> String {
+    var role = child.role.replacingOccurrences(of: ".", with: "_")
+    // the class is described as it is found, under the role it was found with
+    let classID = await controlClass(of: child, role: role).classID
+    if let fixed = NcStandardModel.fixedRole(of: classID) { role = fixed }
+    if !roles.insert(role).inserted {
+      role += "_\(oid)"
+      roles.insert(role)
+    }
+    return role
   }
 
   /// Observes the property changes of the objects that say what the tree contains.
