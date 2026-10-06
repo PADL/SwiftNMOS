@@ -28,14 +28,16 @@ import Glibc
 
 /// An AES70 device with mock AES67 and Dante transports, served as an NMOS node: IS-04
 /// (registration, or peer-to-peer), IS-05 for both transports and IS-12. OCP.1 and
-/// OCP.2 share the HTTP port with the NMOS APIs, as WebSocket subprotocols.
+/// OCP.2 share the HTTP port with the NMOS APIs, as WebSocket subprotocols, and OCP.1
+/// is also served over TCP.
 ///
-///     NMOSDevice [--port 8080] [--registry http://registry:8010 | --peer-to-peer]
+///     NMOSDevice [--port 8080] [--oca-port 65000] [--registry URL | --peer-to-peer]
 ///                [--receivers 4] [--senders 4]
 @main
 enum NMOSDeviceApp {
   struct Options {
     var port: UInt16 = 8080
+    var ocaPort: UInt16 = 65000
     var registryURL: URL?
     var peerToPeer = false
     var receivers = 4
@@ -52,6 +54,9 @@ enum NMOSDeviceApp {
         case "--port":
           guard let port = UInt16(try value(argument)) else { throw Usage("--port needs a port number") }
           self.port = port
+        case "--oca-port":
+          guard let port = UInt16(try value(argument)) else { throw Usage("--oca-port needs a port number") }
+          ocaPort = port
         case "--registry":
           guard let url = URL(string: try value(argument)) else { throw Usage("--registry needs a URL") }
           registryURL = url
@@ -81,7 +86,8 @@ enum NMOSDeviceApp {
       options = try Options(CommandLine.arguments)
     } catch {
       print("NMOSDevice: \(error)")
-      print("usage: NMOSDevice [--port 8080] [--registry URL | --peer-to-peer] [--receivers N] [--senders N]")
+      print("usage: NMOSDevice [--port 8080] [--oca-port 65000] [--registry URL | --peer-to-peer]")
+      print("                  [--receivers N] [--senders N]")
       exit(2)
     }
     let logger = Logger(label: "com.padl.NMOSDevice")
@@ -122,18 +128,24 @@ enum NMOSDeviceApp {
     networkManager.networkApplications = [aes67, dante]
   }
 
-  /// Serves OCA and the NMOS APIs on one port until the process is stopped.
-  private static func serve(on host: HostInterface, options: Options, logger: Logger) async throws {
+  /// Every IPv4 address on `port`.
+  private static func anyAddress(port: UInt16) -> Data {
     var address = sockaddr_in()
     address.sin_family = sa_family_t(AF_INET)
-    address.sin_port = options.port.bigEndian
+    address.sin_port = port.bigEndian
     #if canImport(Darwin)
     address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
     #endif
+    return withUnsafeBytes(of: address) { Data($0) }
+  }
+
+  /// Serves OCA and the NMOS APIs until the process is stopped.
+  private static func serve(on host: HostInterface, options: Options, logger: Logger) async throws {
     let endpoint = try await OcaWSDeviceEndpoint(
-      address: withUnsafeBytes(of: address) { Data($0) },
+      address: anyAddress(port: options.port),
       controlProtocols: [.ocp1, .ocp2]
     )
+    let tcpEndpoint = try await OcaTCPDeviceEndpoint(address: anyAddress(port: options.ocaPort))
 
     let configuration = NMOSNodeConfiguration(registryURL: options.registryURL)
     let store = NMOSResourceStore()
@@ -162,10 +174,11 @@ enum NMOSDeviceApp {
       logger: logger
     )
     await node.attach(to: endpoint)
-    logger.info("serving OCA and NMOS on http://\(host.address):\(port)/x-nmos/")
+    logger.info("serving OCA and NMOS on http://\(host.address):\(port)/x-nmos/, OCP.1 on port \(options.ocaPort)")
 
     try await withThrowingTaskGroup(of: Void.self) { group in
       group.addTask { try await endpoint.run() }
+      group.addTask { try await tcpEndpoint.run() }
       group.addTask { try await node.run() }
       group.addTask { try await bridge.run() }
       try await group.next()

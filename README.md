@@ -22,7 +22,8 @@ MS-05-02 v1.0.
 `Examples/NMOSDevice` is an AES70 device with mock AES67 and Dante transports, served as
 an NMOS node. The transports move no audio, but behave as a device's would when patched,
 so IS-04, IS-05 (`urn:x-nmos:transport:rtp` and `urn:x-nmos:transport:dante`) and IS-12
-can all be exercised. OCP.1 and OCP.2 share its HTTP port, as WebSocket subprotocols.
+can all be exercised. OCP.1 and OCP.2 share its HTTP port, as WebSocket subprotocols,
+and OCP.1 is also served over TCP on `--oca-port` (65000), for `ocacli -h localhost`.
 
     swift run NMOSDevice --peer-to-peer
     scripts/nmos/nmosctl.py --url http://localhost:8080 list receivers
