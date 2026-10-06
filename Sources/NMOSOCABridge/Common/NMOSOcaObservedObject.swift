@@ -82,7 +82,7 @@ final class NMOSOcaObserver {
   }
 
   /// The object's property changes from now on, until the stream is let go of.
-  func changes(of object: SwiftOCADevice.OcaRoot) async -> AsyncStream<OcaPropertyID> {
+  func changes(for object: SwiftOCADevice.OcaRoot) async -> AsyncStream<OcaPropertyID> {
     let controller = await controller()
     let objectNumber = object.objectNumber
     let (stream, continuation) = AsyncStream<OcaPropertyID>.makeStream()
@@ -148,7 +148,7 @@ final class NMOSOcaObservedObject {
     self.object = object
     (self.properties, knownLevel) = properties.properties(of: object)
     self.observer = observer
-    changes = await observer.changes(of: object)
+    changes = await observer.changes(for: object)
   }
 
   /// Whether a changed property is one the bridge reads.
