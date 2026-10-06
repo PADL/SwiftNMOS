@@ -65,7 +65,15 @@ class NcObject<Source: NcObjectSource> {
     case (1, _): return Self.noProperty(property)
     default: break
     }
+    // a property MS-05-02 declares read only is read only, whatever the source has
+    if Self.standardProperty(property, of: identity.classID)?.isReadOnly == true { return Self.readOnly(property) }
     return await source.set(property, of: identity.oid, to: value, session: session)
+  }
+
+  /// The descriptor of a property a standard class in the lineage declares.
+  private static func standardProperty(_ property: NcElementID, of classID: NcClassID) -> NcPropertyDescriptor? {
+    classID.indices.lazy.compactMap { NcStandardModel.classDescriptor(Array(classID[...$0])) }
+      .compactMap { $0.properties.first { $0.id == property } }.first
   }
 
   /// The sequence methods, 1m3 to 1m7, in terms of reading and writing the whole value.
@@ -354,4 +362,14 @@ final class NcClassManager<Source: NcObjectSource>: NcObject<Source> {
     }
     return NcMethodResult(value: descriptor)
   }
+}
+
+/// `NcDeviceManager`: the version of MS-05-02 the model is of. The rest is the source's.
+final class NcDeviceManager<Source: NcObjectSource>: NcObject<Source> {
+  override func get(_ property: NcElementID, _ session: NcSession) async -> NcMethodResult {
+    guard property == Self.ncVersion else { return await super.get(property, session) }
+    return NcMethodResult(value: .string(NcStandardModel.version))
+  }
+
+  private static var ncVersion: NcElementID { NcElementID(level: 3, index: 1) }
 }

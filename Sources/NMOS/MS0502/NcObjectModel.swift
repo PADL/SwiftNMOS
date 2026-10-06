@@ -40,9 +40,6 @@ public struct NcObjectIdentity: Sendable, Hashable {
     self.owner = owner
     self.role = role
   }
-
-  public var isBlock: Bool { classID.starts(with: NcStandardModel.block) }
-  public var isClassManager: Bool { classID.starts(with: NcStandardModel.classManager) }
 }
 
 /// The objects an `NcObjectModel` is a model of. A source supplies each object's
@@ -136,10 +133,17 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
     }
   }
 
-  /// The object as the standard class it is of.
+  /// The object as the nearest standard class in its lineage that has a class here.
   func object(_ identity: NcObjectIdentity) -> NcObject<Source> {
-    if identity.isClassManager { return NcClassManager(identity, model: self) }
-    if identity.isBlock { return NcBlock(identity, model: self) }
+    var classID: NcClassID? = identity.classID
+    while let id = classID {
+      switch id {
+      case NcStandardModel.block: return NcBlock(identity, model: self)
+      case NcStandardModel.classManager: return NcClassManager(identity, model: self)
+      case NcStandardModel.deviceManager: return NcDeviceManager(identity, model: self)
+      default: classID = id.ncParent
+      }
+    }
     return NcObject(identity, model: self)
   }
 

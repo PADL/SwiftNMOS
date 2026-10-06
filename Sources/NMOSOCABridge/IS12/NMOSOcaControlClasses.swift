@@ -25,7 +25,6 @@ import SwiftOCADevice
 /// How one property of an MS-05-02 class is read and written on an OCA object.
 struct NMOSOcaPropertyBinding: Sendable {
   enum Value: Sendable {
-    case constant(NMOSJSONValue)
     /// An OCA property, read and written through its accessor methods; one of a standard
     /// property may be presented in a standard form of its type's own.
     case property(OcaDevicePropertyDescriptor, NMOSOcaSchema?, (any NMOSOcaStandardValue.Type)? = nil)
@@ -183,13 +182,10 @@ final class NMOSOcaControlClasses {
     _ declared: [OcaPropertyID: OcaDevicePropertyDescriptor],
     into presentation: inout Presentation
   ) {
+    // which standard properties are read only is the object model's to enforce
     for inherited in anchors where anchor.nc.starts(with: inherited.nc) {
-      let standard = NcStandardModel.classDescriptor(inherited.nc)
       for property in inherited.properties {
-        let isReadOnly = standard?.properties.first { $0.id == property.id }?.isReadOnly ?? true
         switch property.source {
-        case let .constant(value):
-          presentation.properties[property.id] = .init(value: .constant(value), isReadOnly: true)
         case let .members(id):
           presentation.consumed.insert(id)
         case let .property(id):
@@ -200,7 +196,7 @@ final class NMOSOcaControlClasses {
           let standardForm = description.valueType as? any NMOSOcaStandardValue.Type
           presentation.properties[property.id] = NMOSOcaPropertyBinding(
             value: .property(description, try? datatypes.schema(of: description.valueType), standardForm),
-            isReadOnly: isReadOnly || !description.isSettable || standardForm != nil
+            isReadOnly: !description.isSettable || standardForm != nil
           )
         }
       }

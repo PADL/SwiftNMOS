@@ -39,7 +39,6 @@ import SwiftOCADevice
 public struct NMOSOcaControlMapping: Sendable {
   /// Where the value of a standard property comes from.
   public enum Source: Sendable {
-    case constant(NMOSJSONValue)
     /// An OCA property of the object; one of a type with a standard form of its own
     /// (`NMOSOcaStandardValue`) is presented in that form.
     case property(OcaPropertyID)
@@ -113,7 +112,6 @@ public struct NMOSOcaControlMapping: Sendable {
       // its OCA methods are NcClassManager's own, in OCA's terms
       Anchor(OcaClassManager.classID, NcStandardModel.classManager, hideSubclasses: true),
       Anchor("1.3.1", NcStandardModel.deviceManager, [
-        Property(3, 1, .constant(.string(NcStandardModel.version))),
         Property(3, 2, .property("3.15")),
         Property(3, 3, .property("3.16")),
         Property(3, 4, .property("3.2")),

@@ -373,7 +373,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   ) async -> NcMethodResult {
     let description: OcaDevicePropertyDescriptor
     switch binding.value {
-    case let .constant(value): return NcMethodResult(value: value)
     case let .property(property, _, _), let .component(property, _, _): description = property
     }
     guard let getter = description.getMethodID else {
@@ -388,8 +387,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
     do {
       switch binding.value {
-      case .constant:
-        return .error(.deviceError, "No value")
       case let .component(_, field, schema):
         // the getter answers with the pair; this property is one member of it
         guard let answer = parameters?[field] else { throw NMOSOcaMissingAnswer() }
@@ -424,8 +421,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     var parameters = [String: Any]()
     do {
       switch binding.value {
-      case .constant:
-        return .error(.readonly, "The property is read only")
       case let .property(property, schema, _):
         description = property
         var oca = value
