@@ -259,13 +259,23 @@ final class NcControlProtocolTests: XCTestCase {
 
     // a change to the object it dropped is not reported; one to the object it kept is
     for oid in [98119, 1] {
-      _ = try await client.exchange("""
+      client.send("""
       {"messageType": 0, "commands": [{"handle": 1, "oid": \(oid), "methodId": {"level": 1, "index": 2},
         "arguments": {"id": {"level": 1, "index": 6}, "value": "Changed"}}]}
       """)
     }
-    let notification = try await client.receive()
-    XCTAssertEqual(notification["notifications"]?.arrayValue?.first?["oid"], 1)
+    // a notification may come before or after the response to the command that caused it
+    var responses = 0
+    var notified = [NMOSJSONValue]()
+    while responses < 2 || notified.isEmpty {
+      let message = try await client.receive()
+      if message["messageType"] == 2 {
+        notified += message["notifications"]?.arrayValue ?? []
+      } else {
+        responses += 1
+      }
+    }
+    XCTAssertEqual(notified.map { $0["oid"] }, [1])
   }
 
   func testEachConnectionIsASessionOfItsOwnToTheModel() async throws {

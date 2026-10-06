@@ -104,7 +104,11 @@ final class NMOSOcaServiceBrowserTests: XCTestCase {
     let resolver = Resolver(failures: .max)
     let (browser, reports) = makeBrowser(resolver)
     await browser.handle(event())
-    try await Task.sleep(for: .milliseconds(60))
+    // it is tried again, however long a busy machine takes to get round to it
+    let deadline = ContinuousClock.now + .seconds(3)
+    while resolver.calls < 2, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(5))
+    }
     XCTAssertGreaterThan(resolver.calls, 1)
 
     await browser.handle(event(isAdded: false))
