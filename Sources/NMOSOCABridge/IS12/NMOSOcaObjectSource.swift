@@ -28,17 +28,20 @@ public typealias NMOSOcaDeviceModel = NcObjectModel<NMOSOcaObjectSource>
 
 public extension NcObjectModel where Source == NMOSOcaObjectSource {
   /// `resourceIDs` gives the IDs of the device's IS-04 resources once they are known,
-  /// so that objects can point to the resources they stand for.
+  /// so that objects can point to the resources they stand for. `labels` keeps the user
+  /// labels the OCA objects cannot.
   convenience init(
     device: OcaDevice = .shared,
     mapping: NMOSOcaControlMapping = .standard,
     adaptations: NMOSOcaAdaptations = .standard,
+    labels: any NMOSOcaLabelStore = NMOSOcaMemoryLabelStore(),
     logger: Logger = Logger(label: "com.padl.NMOSOCABridge"),
     resourceIDs: @escaping NMOSOcaObjectSource.ResourceIDs = { nil }
   ) {
     self.init(
       source: NMOSOcaObjectSource(
-        device: device, mapping: mapping, adaptations: adaptations, logger: logger, resourceIDs: resourceIDs
+        device: device, mapping: mapping, adaptations: adaptations, labels: labels, logger: logger,
+        resourceIDs: resourceIDs
       )
     )
   }
@@ -79,6 +82,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   private let mapping: NMOSOcaControlMapping
   private let adaptations: NMOSOcaAdaptations
   private let classes: NMOSOcaControlClasses
+  private let labels: any NMOSOcaLabelStore
   private let logger: Logger
   private let resourceIDs: ResourceIDs
 
@@ -113,12 +117,14 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     device: OcaDevice,
     mapping: NMOSOcaControlMapping,
     adaptations: NMOSOcaAdaptations,
+    labels: any NMOSOcaLabelStore,
     logger: Logger,
     resourceIDs: @escaping ResourceIDs
   ) {
     self.device = device
     self.mapping = mapping
     self.adaptations = adaptations
+    self.labels = labels
     self.logger = logger
     self.resourceIDs = resourceIDs
     classes = NMOSOcaControlClasses(mapping: mapping, logger: logger)
@@ -331,6 +337,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     guard let entry = await entry(oid) else { return .error(.badOid, "No object with oid \(oid)") }
     let controlClass = classes.controlClass(of: entry.object, role: entry.role)
     if property == .userLabel {
+      if let kept = await labels.label(of: entry.object.objectNumber) { return NcMethodResult(value: .string(kept)) }
       guard let label = controlClass.label else { return NcMethodResult(value: .null) }
       let binding = NMOSOcaPropertyBinding(value: .property(label, .string), isReadOnly: false)
       return await read(binding, of: entry.object, as: controller)
@@ -385,13 +392,21 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       guard value.isNull || value.stringValue != nil else {
         return .error(.parameterError, "A user label is a string or null")
       }
-      // the label is the OCA label: an object without one a controller can set (a
-      // manager) refuses, as nothing here could keep its label across a restart
-      guard let label = controlClass.label else {
-        return .error(.readonly, "\(entry.role) has no user label that can be set")
+      // MS-05-02 has every object's label writable. An object without an OCA label, or
+      // whose device will not change it, has the label kept in the label store instead;
+      // any other failure, such as a lock, is the session's error.
+      var written = NcMethodResult(status: .readonly)
+      if let label = controlClass.label {
+        let binding = NMOSOcaPropertyBinding(value: .property(label, .string), isReadOnly: false)
+        written = await write(binding, of: entry.object, value, as: controller)
       }
-      let binding = NMOSOcaPropertyBinding(value: .property(label, .string), isReadOnly: false)
-      result = await write(binding, of: entry.object, value, as: controller)
+      if written.status == .readonly {
+        await labels.setLabel(value.stringValue, of: entry.object.objectNumber)
+        result = NcMethodResult()
+      } else {
+        if !written.status.isError { await labels.setLabel(nil, of: entry.object.objectNumber) }
+        result = written
+      }
     } else if let binding = controlClass.properties[property] {
       result = await write(binding, of: entry.object, value, as: controller)
     } else {

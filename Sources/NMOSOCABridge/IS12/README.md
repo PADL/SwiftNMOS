@@ -146,12 +146,14 @@ own `Get` would read it, and sent as `NcPropertyChangedEventData`.
 
 ## User labels
 
-An object's `userLabel` is its OCA `label`, read and written as the session's
-controller: a lock, the device's refusal, or any other failure is the session's error.
-An object without an OCA label a controller can set (a manager, the class manager)
-reports a null label and refuses a change with `Readonly`. MS-05-02 declares
-`userLabel` writable on every object, but also requires that a label persist across a
-restart; nothing but the OCA object could keep it, so the bridge keeps none itself.
+MS-05-02 has every object's `userLabel` writable. Where the object has an OCA `label` a
+controller can set, the label is that property, written as the session's controller: a
+lock, or any other failure but the device's refusal to change it, is the session's error.
+An object without one (a manager, the class manager), or whose device refuses to change
+it, has its label kept in an `NMOSOcaLabelStore` instead, by object number, over the OCA
+one. MS-05-02 also requires that a label persist across a restart: the default store,
+`NMOSOcaMemoryLabelStore`, keeps labels only while the process runs, and a host that
+can persist them passes a store of its own to `NMOSOcaDeviceModel`.
 
 ## Demo
 

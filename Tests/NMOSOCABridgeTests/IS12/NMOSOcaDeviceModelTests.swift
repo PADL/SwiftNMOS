@@ -561,21 +561,30 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     XCTAssertEqual(cleared.status, .ok)
     XCTAssertEqual(Fixture.gain.label, "")
 
-    // a manager has no label in OCA, so its user label is null and cannot be set
+    // a manager has no label in OCA, so the label store keeps one for it
     let manager = NcOid(OcaNetworkManagerONo)
     let before = await get(manager, 1, 6)
     XCTAssertEqual(before, NcMethodResult(value: .null))
     let named = await set(manager, 1, 6, "Networks")
-    XCTAssertEqual(named.status, .readonly)
+    XCTAssertEqual(named.status, .ok)
+    let after = await get(manager, 1, 6)
+    XCTAssertEqual(after.value, "Networks")
     let rejected = await set(manager, 1, 6, 7)
     XCTAssertEqual(rejected.status, .parameterError)
+    _ = await set(manager, 1, 6, .null)
 
-    // nor can the label of an object whose device will not have it changed
+    // and for an object whose device will not have its label changed
     let fixed = Fixture.fixed.objectNumber
-    let renamed = await set(fixed, 1, 6, "Mine")
-    XCTAssertEqual(renamed.status, .readonly)
     let factory = await get(fixed, 1, 6)
     XCTAssertEqual(factory.value, "Factory")
+    let renamed = await set(fixed, 1, 6, "Mine")
+    XCTAssertEqual(renamed.status, .ok)
+    XCTAssertEqual(Fixture.fixed.label, "Factory")
+    let kept = await get(fixed, 1, 6)
+    XCTAssertEqual(kept.value, "Mine")
+    _ = await set(fixed, 1, 6, .null)
+    let restored = await get(fixed, 1, 6)
+    XCTAssertEqual(restored.value, "Factory")
 
     // but a lock is the session's error, and leaves the label as it is
     let locked = Fixture.locked.objectNumber
@@ -955,6 +964,19 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     _ = await set(trimmed, 6, 1, 3)
     let third = await next(notifications)
     XCTAssertEqual(third?.oid, trimmed)
+    await model.subscriptionsChanged(to: [], session: session)
+  }
+
+  @OcaDevice
+  func testALabelTheStoreKeepsIsNotifiedToo() async throws {
+    let manager = NcOid(OcaNetworkManagerONo)
+    let notifications = model.notifications(for: session)
+    await model.subscriptionsChanged(to: [manager], session: session)
+    _ = await set(manager, 1, 6, "Notified")
+    let notification = await next(notifications)
+    XCTAssertEqual(notification?.oid, manager)
+    XCTAssertEqual(notification?.eventData["value"], "Notified")
+    _ = await set(manager, 1, 6, .null)
     await model.subscriptionsChanged(to: [], session: session)
   }
 
