@@ -13,7 +13,7 @@ let package = Package(
     .library(name: "NMOSOCABridge", targets: ["NMOSOCABridge"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/PADL/SwiftOCA", branch: "property-key-path-tables"),
+    .package(url: "https://github.com/PADL/SwiftOCA", branch: "main"),
     .package(url: "https://github.com/swhitty/FlyingFox", from: "0.26.2"),
     .package(url: "https://github.com/apple/swift-log", from: "1.6.2"),
     .package(url: "https://github.com/apple/swift-crypto", from: "3.10.0"),
