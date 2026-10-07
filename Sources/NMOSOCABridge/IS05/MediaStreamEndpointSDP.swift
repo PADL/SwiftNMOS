@@ -326,7 +326,11 @@ public extension MediaStreamSDP {
     direction: inout Direction,
     sourceAddress: inout String?
   ) {
-    if let value = attribute.afterPrefix("rtpmap:") {
+    // <name>[:<value>]
+    let parts = attribute.split(separator: ":", maxSplits: 1)
+    let value = parts.count > 1 ? String(parts[1]) : nil
+    switch (parts.first.map(String.init) ?? "", value) {
+    case let ("rtpmap", value?):
       // <payload type> L<bits>/<rate>[/<channels>]
       let fields = value.split(separator: " ")
       guard fields.count >= 2, let payloadType = UInt8(fields[0]) else { return }
@@ -335,29 +339,25 @@ public extension MediaStreamSDP {
             let sampleSize = UInt8(format[0].dropFirst()),
             let rate = UInt32(format[1]) else { return }
       rtpmap = (payloadType, sampleSize, rate, format.count > 2 ? UInt16(format[2]) ?? 1 : 1)
-    } else if let value = attribute.afterPrefix("ptime:"), let milliseconds = Double(value) {
-      packetTime = milliseconds / 1000
-    } else if let value = attribute.afterPrefix("ts-refclk:ptp=") {
-      // <ptp version>:<grandmaster id>[:<domain>]
-      let fields = value.split(separator: ":")
+    case let ("ptime", value?):
+      if let milliseconds = Double(value) { packetTime = milliseconds / 1000 }
+    case let ("ts-refclk", value?) where value.hasPrefix("ptp="):
+      // ptp=<ptp version>:<grandmaster id>[:<domain>]
+      let fields = value.dropFirst(4).split(separator: ":")
       guard fields.count >= 2 else { return }
       grandmasterID = String(fields[1])
       domain = fields.count > 2 ? UInt8(fields[2]) : nil
-    } else if let value = attribute.afterPrefix("mediaclk:direct=") {
-      clockOffset = UInt32(value)
-    } else if let value = attribute.afterPrefix("source-filter:") {
+    case let ("mediaclk", value?) where value.hasPrefix("direct="):
+      clockOffset = UInt32(value.dropFirst(7))
+    case let ("source-filter", value?):
       // incl IN IP4 <destination> <source>...; an exclusion names no one source
       let fields = value.split(separator: " ")
       guard fields.count >= 5, fields[0] == "incl" else { return }
       sourceAddress = String(fields[4])
-    } else if let parsed = Direction(rawValue: attribute) {
-      direction = parsed
+    case let (name, nil):
+      if let parsed = Direction(rawValue: name) { direction = parsed }
+    default:
+      break
     }
-  }
-}
-
-private extension String {
-  func afterPrefix(_ prefix: String) -> String? {
-    hasPrefix(prefix) ? String(dropFirst(prefix.count)) : nil
   }
 }

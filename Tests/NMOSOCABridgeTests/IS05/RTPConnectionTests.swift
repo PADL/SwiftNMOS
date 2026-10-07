@@ -195,6 +195,26 @@ final class RTPConnectionTests: XCTestCase {
     XCTAssertEqual(active.json?["transport_file"]?["type"], "application/sdp")
   }
 
+  func testEveryMediaAttributeIsRead() throws {
+    let text = """
+    v=0\r\no=- 1 1 IN IP4 172.29.26.24\r\ns=Attributes\r\nt=0 0\r\n\
+    m=audio 5004 RTP/AVP 96\r\nc=IN IP4 239.69.1.2/32\r\na=recvonly\r\n\
+    a=rtpmap:96 L16/96000/4\r\na=ptime:0.125\r\n\
+    a=ts-refclk:ptp=IEEE1588-2008:00-1D-C1-FF-FE-12-34-56:7\r\na=mediaclk:direct=42\r\n\
+    a=source-filter: incl IN IP4 239.69.1.2 10.0.0.9\r\n
+    """
+    let sdp = try XCTUnwrap(MediaStreamSDP(sdpString: text))
+    XCTAssertEqual(sdp.sampleSize, 16)
+    XCTAssertEqual(sdp.sampleRate, 96000)
+    XCTAssertEqual(sdp.channelCount, 4)
+    XCTAssertEqual(sdp.packetTime, 125e-6)
+    XCTAssertEqual(sdp.ptpGrandmasterID, "00-1D-C1-FF-FE-12-34-56")
+    XCTAssertEqual(sdp.ptpDomain, 7)
+    XCTAssertEqual(sdp.mediaClockOffset, 42)
+    XCTAssertEqual(sdp.sourceAddress, "10.0.0.9")
+    XCTAssertEqual(sdp.direction, .receiveOnly)
+  }
+
   @OcaDevice
   func testParametersTakePrecedenceOverTheTransportFile() async throws {
     let application = try await makeApplication()

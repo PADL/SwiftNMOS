@@ -229,15 +229,16 @@ extension NMOSOcaRTPAdaptation: NMOSOcaConnecting {
   private func configure(_ endpoint: NMOSOcaEndpoint, sdpString: OcaSDPString, streamID: OcaUint16) async throws {
     let id = endpoint.endpoint.idInternal
     do {
-      if let application = endpoint.application as? any MediaStreamEndpointSDPRepresentable {
+      switch endpoint.application {
+      case let application as any MediaStreamEndpointSDPRepresentable:
         try await application.configureEndpointFromSDP(
           endpointID: id, sdpString: sdpString, streamID: streamID, from: NMOSConnectionController.shared
         )
-      } else if let application = endpoint.application as? SwiftOCADevice.Aes67OcaMediaTransportApplication {
+      case let application as SwiftOCADevice.Aes67OcaMediaTransportApplication:
         try await application.configureEndpointFromSDP(
           endpointID: id, sdpString: sdpString, streamID: streamID, from: NMOSConnectionController.shared
         )
-      } else {
+      default:
         throw NMOSConnectionError.failed("The endpoint's application takes no session description")
       }
     } catch {

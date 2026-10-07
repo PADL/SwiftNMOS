@@ -154,10 +154,13 @@ public struct NMOSFlyingFoxHTTPClient: NMOSHTTPClient {
     while let info = cursor?.pointee {
       cursor = info.ai_next
       guard let address = info.ai_addr else { continue }
-      if info.ai_family == AF_INET {
+      switch info.ai_family {
+      case AF_INET:
         addresses.append(.ip4(address.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee }))
-      } else if info.ai_family == AF_INET6 {
+      case AF_INET6:
         addresses.append(.ip6(address.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { $0.pointee }))
+      default:
+        break
       }
     }
     guard !addresses.isEmpty else { throw NMOSHTTPClientError.unresolvedHost(host) }
