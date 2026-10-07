@@ -82,14 +82,7 @@ class NcObject<Source: NcObjectSource> {
     _ arguments: NcArguments,
     _ session: NcSession
   ) async throws -> NcMethodResult {
-    let property = try arguments.propertyID()
-    // a change is a read and then a write, which two sessions must not interleave
-    guard (4...6).contains(method) else { return try await sequence(method, of: property, arguments, session) }
-    let key = NcSequenceLocks.Key(oid: identity.oid, property: property)
-    let locks = model.sequenceLocks
-    await locks.acquire(key)
-    defer { locks.release(key) }
-    return try await sequence(method, of: property, arguments, session)
+    try await sequence(method, of: arguments.propertyID(), arguments, session)
   }
 
   private func sequence(
