@@ -105,7 +105,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   private var sessions = [NcSession: Session]()
   /// Where the device finds the sessions' controllers.
   let endpoint = NMOSOcaControlEndpoint()
-  /// Giving the device the endpoint and the class manager, which every caller waits for.
+  /// Giving the device the endpoint, which every caller waits for.
   private var registration: Task<Void, Never>?
   /// Each block's members' roles, with the members they were worked out for.
   private var roles = [OcaONo: (members: [OcaONo], roles: [OcaONo: String])]()
@@ -169,16 +169,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   /// The managers, device manager first, which the root block contains.
   private func managers() async -> [SwiftOCADevice.OcaRoot] {
-    guard let deviceManager = await device.deviceManager else { return [] }
-    // the class manager is one of them, so it is made first
-    await registerEndpoint()
-    var managers: [SwiftOCADevice.OcaRoot] = [deviceManager]
-    for manager in deviceManager.managers where manager.objectNumber != deviceManager.objectNumber {
-      if let object: SwiftOCADevice.OcaRoot = await device.resolve(objectNumber: manager.objectNumber) {
-        managers.append(object)
-      }
-    }
-    return managers
+    await device.managers
   }
 
   /// A block's members, in order: the objects it owns and, for the root block, the managers.
@@ -245,9 +236,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     let registration = Task { @OcaDevice [device, endpoint, logger] in
       do { try await device.add(endpoint: endpoint) } catch {
         logger.error("not receiving events: the device refused the NMOS control endpoint: \(error)")
-      }
-      do { _ = try await SwiftOCADevice.OcaClassManager.shared(on: device) } catch {
-        logger.error("not presenting the class manager: the device refused it: \(error)")
       }
     }
     self.registration = registration
@@ -566,7 +554,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// A class manager publishes the classes of every object in the model, so each has
   /// to have been looked at before they are listed; a class is described only once.
   private func describeEveryObject() async {
-    await registerEndpoint()
     for object in await device.objects.values {
       _ = classes.controlClass(of: object, role: role(of: object))
     }
