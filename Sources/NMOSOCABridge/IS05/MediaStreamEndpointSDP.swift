@@ -202,7 +202,7 @@ public extension MediaStreamSDP {
   /// AES70-21 §10.2.4 stream selection: the session section with the one media section
   /// whose port is `streamID`. A single stream also matches a zero stream ID; a
   /// multistream description needs a nonzero one.
-  private static func selectStream(in sdpString: OcaSDPString, streamID: OcaUint16) throws -> OcaSDPString {
+  static func selectStream(in sdpString: OcaSDPString, streamID: OcaUint16) throws -> OcaSDPString {
     let (session, media) = sections(of: sdpString)
     // m=<media> <port>[/<number of ports>] <proto> <fmt>
     func port(_ section: [Substring]) -> OcaUint16? {
