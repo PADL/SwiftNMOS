@@ -23,6 +23,7 @@ import Synchronization
 import XCTest
 
 /// A proprietary subclass of a standard class, with a property of its own.
+@OcaDeviceClass
 private final class TrimmedGain: SwiftOCADevice.OcaGain {
   override class var classID: OcaClassID {
     OcaClassID(parent: super.classID, authority: OcaOrganizationID((0x0A, 0xE9, 0x1B)), 1)
@@ -91,6 +92,7 @@ private final class LockedLabelGain: SwiftOCADevice.OcaGain {
 
 /// An agent that keeps something for local controllers only, as a device's store of
 /// its own configuration does: `secret` may be read, and `setting` written, only by one.
+@OcaDeviceClass
 private final class LocalOnlyAgent: SwiftOCADevice.OcaAgent {
   override class var classID: OcaClassID {
     OcaClassID(parent: super.classID, authority: OcaOrganizationID((0x0A, 0xE9, 0x1B)), 9)
@@ -147,6 +149,7 @@ private final class SealedAgent: SwiftOCADevice.OcaAgent {
 }
 
 /// A class no object of the device has until a test adds one.
+@OcaDeviceClass
 private final class LateActuator: SwiftOCADevice.OcaActuator {
   override class var classID: OcaClassID {
     OcaClassID(parent: super.classID, authority: OcaOrganizationID((0x0A, 0xE9, 0x1B)), 77)
