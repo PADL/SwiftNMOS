@@ -337,7 +337,12 @@ final class NcClassManager<Source: NcObjectSource>: NcObject<Source> {
         fields.insert(contentsOf: inheritedFields, at: 0)
         ancestor = parent
       }
-      descriptor.kind = .struct(fields: fields, parentType: parentType)
+      descriptor = NcDatatypeDescriptor(
+        description: descriptor.description,
+        name: descriptor.name,
+        kind: .struct(fields: fields, parentType: parentType),
+        constraints: descriptor.constraints
+      )
     }
     return model.descriptors.keep(.init(json: descriptor.json), for: key, in: lists).json
   }

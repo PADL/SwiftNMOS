@@ -37,11 +37,11 @@ public typealias NMOSTransportParameters = [String: NMOSJSONValue]
 /// What a transport parameter may be set to (IS-05 `constraint-schema`); a parameter
 /// with no members set is unconstrained.
 public struct NMOSConstraint: Codable, Sendable, Hashable {
-  public var maximum: NMOSJSONValue?
-  public var minimum: NMOSJSONValue?
+  public let maximum: NMOSJSONValue?
+  public let minimum: NMOSJSONValue?
   public var `enum`: [NMOSJSONValue]?
-  public var pattern: String?
-  public var description: String?
+  public let pattern: String?
+  public let description: String?
 
   public init(
     maximum: NMOSJSONValue? = nil,

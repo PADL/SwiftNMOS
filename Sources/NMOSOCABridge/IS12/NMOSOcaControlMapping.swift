@@ -47,8 +47,8 @@ public struct NMOSOcaControlMapping: Sendable {
   }
 
   public struct Property: Sendable {
-    public var id: NcElementID
-    public var source: Source
+    public let id: NcElementID
+    public let source: Source
 
     public init(_ level: UInt16, _ index: UInt16, _ source: Source) {
       id = NcElementID(level: level, index: index)
@@ -58,12 +58,12 @@ public struct NMOSOcaControlMapping: Sendable {
 
   /// An OCA class presented as a standard class, with the standard class's own properties.
   public struct Anchor: Sendable {
-    public var oca: OcaClassID
-    public var nc: NcClassID
-    public var properties: [Property]
+    public let oca: OcaClassID
+    public let nc: NcClassID
+    public let properties: [Property]
     /// Whether the OCA class, and the OCA classes above it, are hidden behind the standard
     /// class: nothing they have is presented beyond the standard class's elements.
-    public var hideSubclasses: Bool
+    public let hideSubclasses: Bool
 
     public init(_ oca: OcaClassID, _ nc: NcClassID, _ properties: [Property] = [], hideSubclasses: Bool = false) {
       self.oca = oca
@@ -73,14 +73,14 @@ public struct NMOSOcaControlMapping: Sendable {
     }
   }
 
-  public var anchors: [Anchor]
+  public let anchors: [Anchor]
   /// The negated organisation ID of whoever defines the classes that follow the anchor.
-  public var authorityKey: Int32
+  public let authorityKey: Int32
   /// The Swift name of the device manager's list of the device's managers.
-  public var managersProperty: String
+  public let managersProperty: String
   /// MS-05-02 fixes the root block's oid and role; OCA numbers its device manager 1.
-  public var rootRole: String
-  public var oids: [OcaONo: NcOid]
+  public let rootRole: String
+  public let oids: [OcaONo: NcOid]
 
   /// The oid an OCA object is presented under.
   public func oid(of objectNumber: OcaONo) -> NcOid { oids[objectNumber] ?? NcOid(objectNumber.rawValue) }

@@ -32,7 +32,7 @@ public enum NMOSHTTPClientError: Error, Sendable, Equatable {
 public struct NMOSFlyingFoxHTTPClient: NMOSHTTPClient {
   /// How long a whole request may take. A heartbeat that takes longer than the heartbeat
   /// interval is as good as lost, so the node passes that interval.
-  public var timeout: Duration
+  public let timeout: Duration
   private let lookup: Lookup
 
   /// Finds the addresses of a named host, in the order to try them, and may block while

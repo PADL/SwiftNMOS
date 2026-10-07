@@ -53,8 +53,8 @@ public actor NMOSConnectionAPI {
   /// An activation: the settings the client asked for, and what the endpoint then said it
   /// was doing, which is those settings as its transport writes them.
   private struct Activated {
-    var asked: NMOSConnectionState
-    var readBack: NMOSConnectionState
+    let asked: NMOSConnectionState
+    let readBack: NMOSConnectionState
   }
 
   private enum Route: Sendable {

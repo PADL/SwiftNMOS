@@ -23,11 +23,11 @@ import SwiftOCADevice
 /// The node's clocks as the device's media clocks and their time sources give them.
 struct NMOSOcaClocks {
   /// The clocks in the order they are named, `clk0` first.
-  var clocks = [NMOSClock]()
+  let clocks: [NMOSClock]
   /// The name of the clock each media clock is timed from.
-  var names = [OcaONo: String]()
+  let names: [OcaONo: String]
   /// The objects the clocks were read from, to be observed for changes.
-  var objects = [SwiftOCADevice.OcaRoot]()
+  let objects: [SwiftOCADevice.OcaRoot]
 
   func name(for endpoint: NMOSOcaEndpoint) -> String? {
     names[endpoint.endpoint.clockONo]
@@ -48,30 +48,32 @@ extension NMOSOcaBridge {
   /// clock for each media clock that follows none. Ordered by object number, so that a
   /// clock keeps its name for as long as the same objects exist.
   func clocks(for endpoints: [NMOSOcaEndpoint]) async -> NMOSOcaClocks {
-    var result = NMOSOcaClocks()
+    var clocks = [NMOSClock]()
+    var names = [OcaONo: String]()
+    var objects = [SwiftOCADevice.OcaRoot]()
     // keyed by the object that makes the clock what it is: its time source, else itself
     var named = [OcaONo: String]()
     for clockONo in Set(endpoints.map(\.endpoint.clockONo)).sorted() where clockONo != OcaInvalidONo {
       guard let mediaClock: SwiftOCADevice.OcaMediaClock3 = await device.resolve(objectNumber: clockONo)
       else { continue }
-      result.objects.append(mediaClock)
+      objects.append(mediaClock)
       let timeSource: SwiftOCADevice.OcaTimeSource? = await device.resolve(objectNumber: mediaClock.timeSourceONo)
       let key = timeSource?.objectNumber ?? clockONo
       if let name = named[key] {
-        result.names[clockONo] = name
+        names[clockONo] = name
         continue
       }
-      let name = "clk\(result.clocks.count)"
+      let name = "clk\(clocks.count)"
       named[key] = name
-      result.names[clockONo] = name
+      names[clockONo] = name
       if let timeSource {
-        result.objects.append(timeSource)
-        result.clocks.append(Self.clock(named: name, from: timeSource))
+        objects.append(timeSource)
+        clocks.append(Self.clock(named: name, from: timeSource))
       } else {
-        result.clocks.append(.internal(name: name))
+        clocks.append(.internal(name: name))
       }
     }
-    return result
+    return NMOSOcaClocks(clocks: clocks, names: names, objects: objects)
   }
 
   /// A time source delivered by PTP, whose grandmaster is known, is a PTP clock; any

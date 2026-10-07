@@ -22,11 +22,11 @@ import Logging
 /// `controls`: the Connection API, the control protocol, or one of the host's own.
 public struct NMOSControl: Sendable, Hashable {
   /// The control type URN with its version, such as `urn:x-nmos:control:sr-ctrl/v1.1`.
-  public var type: String
+  public let type: String
   /// Where it is served, relative to `/x-nmos/`, such as `connection/v1.1/`.
-  public var path: String
+  public let path: String
   /// Whether it is reached by WebSocket rather than plain HTTP.
-  public var isWebSocket: Bool
+  public let isWebSocket: Bool
 
   public init(type: String, path: String, isWebSocket: Bool = false) {
     self.type = type
@@ -59,19 +59,19 @@ public extension NMOSNodeResource.Endpoint {
 /// How the node finds a registry and announces itself.
 public struct NMOSNodeConfiguration: Sendable {
   /// A Registration API to use instead of discovering one, such as `http://registry:8010`.
-  public var registryURL: URL?
+  public let registryURL: URL?
   /// Whether to advertise the Node API by mDNS while no registry is in use.
-  public var peerToPeer: Bool
-  public var heartbeatInterval: Duration
+  public let peerToPeer: Bool
+  public let heartbeatInterval: Duration
   /// How long to browse for a Registration API before concluding there is none and
   /// operating peer-to-peer. DNS-SD cannot say that a service does not exist, only not
   /// answer; browsing goes on afterwards, and a registry found later is used.
-  public var registryDiscoveryTimeout: Duration
+  public let registryDiscoveryTimeout: Duration
   /// The wait before trying again when no Registration API answers: the first wait,
   /// doubled each time up to the last.
-  public var registrationBackoff: ClosedRange<Duration>
+  public let registrationBackoff: ClosedRange<Duration>
   /// Controls of the host's own, listed after those of the APIs the node serves.
-  public var controls: [NMOSControl]
+  public let controls: [NMOSControl]
 
   public init(
     registryURL: URL? = nil,

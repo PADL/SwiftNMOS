@@ -33,8 +33,8 @@ struct NMOSOcaPropertyBinding: Sendable {
     case component(OcaDevicePropertyDescriptor, field: String, NMOSOcaSchema)
   }
 
-  var value: Value
-  var isReadOnly: Bool
+  let value: Value
+  let isReadOnly: Bool
 }
 
 /// How one method of an MS-05-02 class is invoked on an OCA object: the OCA method, and
@@ -42,27 +42,27 @@ struct NMOSOcaPropertyBinding: Sendable {
 /// the names IS-12 arguments and the result's fields go by.
 struct NMOSOcaMethodBinding: Sendable {
   struct Field: Sendable {
-    var name: String
-    var schema: NMOSOcaSchema
+    let name: String
+    let schema: NMOSOcaSchema
   }
 
-  var methodID: OcaMethodID
-  var parameters: [Field]
-  var results: [Field]
+  let methodID: OcaMethodID
+  let parameters: [Field]
+  let results: [Field]
 }
 
 /// An OCA class as the bridge presents it: its MS-05-02 class, how each property and
 /// method below `NcObject` is served, and the non-standard classes its lineage contributes.
 struct NMOSOcaControlClass: Sendable {
-  var classID: NcClassID
-  var properties: [NcElementID: NMOSOcaPropertyBinding]
+  let classID: NcClassID
+  let properties: [NcElementID: NMOSOcaPropertyBinding]
   /// The methods of the non-standard classes; the standard ones are the object model's.
-  var methods: [NcElementID: NMOSOcaMethodBinding] = [:]
+  let methods: [NcElementID: NMOSOcaMethodBinding]
   /// The MS-05-02 ID each OCA property is presented under, the user label included.
-  var standardIDs: [OcaPropertyID: NcElementID]
+  let standardIDs: [OcaPropertyID: NcElementID]
   /// The OCA property that holds the object's user label, if it has one a controller can set.
-  var label: OcaDevicePropertyDescriptor?
-  var descriptors: [NcClassDescriptor]
+  let label: OcaDevicePropertyDescriptor?
+  let descriptors: [NcClassDescriptor]
 }
 
 /// Works out, once per OCA class, how the mapping presents it. The classes and
@@ -132,7 +132,9 @@ final class NMOSOcaControlClasses {
     let anchored = anchors(in: lineage)
     guard let (anchorDepth, anchor) = anchored.max(by: { $0.depth < $1.depth }) else {
       // OcaRoot is always in the lineage, so only a mapping without it gets here
-      return NMOSOcaControlClass(classID: NcStandardModel.object, properties: [:], standardIDs: [:], descriptors: [])
+      return NMOSOcaControlClass(
+        classID: NcStandardModel.object, properties: [:], methods: [:], standardIDs: [:], label: nil, descriptors: []
+      )
     }
     let declared = Dictionary(
       lineage.flatMap(\.properties).map { ($0.propertyID, $0) }, uniquingKeysWith: { first, _ in first }

@@ -59,15 +59,15 @@ public protocol NMOSResourceRepresentable: Codable, Sendable, Hashable {
   var id: NMOSID { get }
   /// Set by the resource store whenever the resource's content changes.
   var version: NMOSTimestamp { get set }
-  var label: String { get set }
-  var description: String { get set }
-  var tags: [String: [String]] { get set }
+  var label: String { get }
+  var description: String { get }
+  var tags: [String: [String]] { get }
 }
 
 /// A fraction, for sample and grain rates.
 public struct NMOSRational: Codable, Sendable, Hashable {
-  public var numerator: Int
-  public var denominator: Int
+  public let numerator: Int
+  public let denominator: Int
 
   public init(numerator: Int, denominator: Int = 1) {
     self.numerator = numerator
@@ -147,10 +147,10 @@ public struct NMOSNodeResource: NMOSResourceRepresentable {
   public static let kind = NMOSResourceKind.node
 
   public struct Endpoint: Codable, Sendable, Hashable {
-    public var host: String
-    public var port: Int
+    public let host: String
+    public let port: Int
     public var `protocol`: String
-    public var authorization: Bool?
+    public let authorization: Bool?
 
     public init(host: String, port: Int, protocol: String = "http", authorization: Bool? = nil) {
       self.host = host
@@ -161,8 +161,8 @@ public struct NMOSNodeResource: NMOSResourceRepresentable {
   }
 
   public struct API: Codable, Sendable, Hashable {
-    public var versions: [NMOSAPIVersion]
-    public var endpoints: [Endpoint]
+    public let versions: [NMOSAPIVersion]
+    public let endpoints: [Endpoint]
 
     public init(versions: [NMOSAPIVersion], endpoints: [Endpoint]) {
       self.versions = versions
@@ -171,9 +171,9 @@ public struct NMOSNodeResource: NMOSResourceRepresentable {
   }
 
   public struct Service: Codable, Sendable, Hashable {
-    public var href: String
-    public var type: String
-    public var authorization: Bool?
+    public let href: String
+    public let type: String
+    public let authorization: Bool?
 
     public init(href: String, type: String, authorization: Bool? = nil) {
       self.href = href
@@ -186,8 +186,8 @@ public struct NMOSNodeResource: NMOSResourceRepresentable {
   /// octets; `chassisID` is the MAC address or other ID of the chassis, when known.
   public struct Interface: Codable, Sendable, Hashable {
     public struct AttachedNetworkDevice: Codable, Sendable, Hashable {
-      public var chassisID: String
-      public var portID: String
+      public let chassisID: String
+      public let portID: String
 
       public init(chassisID: String, portID: String) {
         self.chassisID = chassisID
@@ -200,10 +200,10 @@ public struct NMOSNodeResource: NMOSResourceRepresentable {
       }
     }
 
-    public var name: String
+    public let name: String
     @NMOSNullable public var chassisID: String?
-    public var portID: String
-    public var attachedNetworkDevice: AttachedNetworkDevice?
+    public let portID: String
+    public let attachedNetworkDevice: AttachedNetworkDevice?
 
     public init(
       name: String,
@@ -229,15 +229,15 @@ public struct NMOSNodeResource: NMOSResourceRepresentable {
   public var version: NMOSTimestamp
   public var label: String
   public var description: String
-  public var tags: [String: [String]]
+  public let tags: [String: [String]]
   /// Deprecated by IS-04 in favour of `api`, but still required.
-  public var href: String
-  public var hostname: String?
-  public var api: API
-  public var caps: [String: NMOSJSONValue]
-  public var services: [Service]
+  public let href: String
+  public let hostname: String?
+  public let api: API
+  public let caps: [String: NMOSJSONValue]
+  public let services: [Service]
   public var clocks: [NMOSClock]
-  public var interfaces: [Interface]
+  public let interfaces: [Interface]
 
   public init(
     id: NMOSID,
@@ -277,9 +277,9 @@ public struct NMOSDeviceResource: NMOSResourceRepresentable {
 
   /// A control endpoint of the device, such as its Connection API or control protocol.
   public struct Control: Codable, Sendable, Hashable {
-    public var href: String
-    public var type: String
-    public var authorization: Bool?
+    public let href: String
+    public let type: String
+    public let authorization: Bool?
 
     public init(href: String, type: String, authorization: Bool? = nil) {
       self.href = href
@@ -292,14 +292,14 @@ public struct NMOSDeviceResource: NMOSResourceRepresentable {
   public var version: NMOSTimestamp
   public var label: String
   public var description: String
-  public var tags: [String: [String]]
-  public var type: String
-  public var nodeID: NMOSID
+  public let tags: [String: [String]]
+  public let type: String
+  public let nodeID: NMOSID
   /// Deprecated by IS-04 in favour of finding senders and receivers by their `device_id`.
   /// The schema still requires both, so they are published, and left empty.
-  public var senders: [NMOSID]
-  public var receivers: [NMOSID]
-  public var controls: [Control]
+  public let senders: [NMOSID]
+  public let receivers: [NMOSID]
+  public let controls: [Control]
 
   public init(
     id: NMOSID,
@@ -338,9 +338,9 @@ public struct NMOSSourceResource: NMOSResourceRepresentable {
   public static let kind = NMOSResourceKind.source
 
   public struct Channel: Codable, Sendable, Hashable {
-    public var label: String
+    public let label: String
     /// A channel symbol from the NMOS audio channel symbol set, such as `L` or `U01`.
-    public var symbol: String?
+    public let symbol: String?
 
     public init(label: String, symbol: String? = nil) {
       self.label = label
@@ -352,14 +352,14 @@ public struct NMOSSourceResource: NMOSResourceRepresentable {
   public var version: NMOSTimestamp
   public var label: String
   public var description: String
-  public var tags: [String: [String]]
-  public var caps: [String: NMOSJSONValue]
-  public var deviceID: NMOSID
-  public var parents: [NMOSID]
+  public let tags: [String: [String]]
+  public let caps: [String: NMOSJSONValue]
+  public let deviceID: NMOSID
+  public let parents: [NMOSID]
   /// The name of the node clock this source is timed from.
   @NMOSNullable public var clockName: String?
-  public var format: String
-  public var channels: [Channel]
+  public let format: String
+  public let channels: [Channel]
 
   public init(
     id: NMOSID,
@@ -402,15 +402,15 @@ public struct NMOSFlowResource: NMOSResourceRepresentable {
   public var version: NMOSTimestamp
   public var label: String
   public var description: String
-  public var tags: [String: [String]]
-  public var sourceID: NMOSID
-  public var deviceID: NMOSID
-  public var parents: [NMOSID]
-  public var format: String
-  public var sampleRate: NMOSRational
+  public let tags: [String: [String]]
+  public let sourceID: NMOSID
+  public let deviceID: NMOSID
+  public let parents: [NMOSID]
+  public let format: String
+  public let sampleRate: NMOSRational
   /// Such as `audio/L24`.
-  public var mediaType: String
-  public var bitDepth: Int?
+  public let mediaType: String
+  public let bitDepth: Int?
 
   public init(
     id: NMOSID,
@@ -475,15 +475,15 @@ public struct NMOSSenderResource: NMOSResourceRepresentable {
   public var version: NMOSTimestamp
   public var label: String
   public var description: String
-  public var tags: [String: [String]]
-  public var caps: [String: NMOSJSONValue]?
+  public let tags: [String: [String]]
+  public let caps: [String: NMOSJSONValue]?
   @NMOSNullable public var flowID: NMOSID?
-  public var transport: String
-  public var deviceID: NMOSID
+  public let transport: String
+  public let deviceID: NMOSID
   /// Where the transport file (SDP for RTP) can be fetched, when the transport has one.
   @NMOSNullable public var manifestHref: String?
   /// Names of the node interfaces the sender sends from, one per leg.
-  public var interfaceBindings: [String]
+  public let interfaceBindings: [String]
   public var subscription: Subscription
 
   public init(
@@ -545,7 +545,7 @@ public struct NMOSReceiverResource: NMOSResourceRepresentable {
 
   public struct Capabilities: Codable, Sendable, Hashable {
     /// The media types the receiver can consume, such as `audio/L24`.
-    public var mediaTypes: [String]?
+    public let mediaTypes: [String]?
 
     public init(mediaTypes: [String]? = nil) { self.mediaTypes = mediaTypes }
 
@@ -558,13 +558,13 @@ public struct NMOSReceiverResource: NMOSResourceRepresentable {
   public var version: NMOSTimestamp
   public var label: String
   public var description: String
-  public var tags: [String: [String]]
-  public var deviceID: NMOSID
-  public var transport: String
-  public var interfaceBindings: [String]
+  public let tags: [String: [String]]
+  public let deviceID: NMOSID
+  public let transport: String
+  public let interfaceBindings: [String]
   public var subscription: Subscription
-  public var format: String
-  public var caps: Capabilities
+  public let format: String
+  public let caps: Capabilities
 
   public init(
     id: NMOSID,

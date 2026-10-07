@@ -69,7 +69,7 @@ public struct NMOSOcaMilanAdaptation: NMOSOcaTransportAdaptation {
 
 /// The adaptations a bridge presents endpoints through, in the order they are asked.
 public struct NMOSOcaAdaptations: Sendable {
-  public var adaptations: [any NMOSOcaTransportAdaptation]
+  public let adaptations: [any NMOSOcaTransportAdaptation]
 
   public init(_ adaptations: [any NMOSOcaTransportAdaptation]) {
     self.adaptations = adaptations

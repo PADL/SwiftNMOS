@@ -22,9 +22,9 @@ import Logging
 /// A Registration API the node could register with.
 struct NMOSRegistry: Sendable, Hashable {
   /// The root of its HTTP server, such as `http://registry:8010`.
-  var url: URL
+  let url: URL
   /// Lower is preferred; 100 and above are registries under development.
-  var priority: Int
+  let priority: Int
 
   static let version = NMOSAPIVersion.v1_3
 

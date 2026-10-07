@@ -27,11 +27,11 @@ public enum NMOSServiceType {
 
 /// A service to advertise by DNS-SD.
 public struct NMOSServiceAdvertisement: Sendable, Hashable {
-  public var type: String
+  public let type: String
   /// The instance name; nil lets the responder use the host's name.
-  public var name: String?
-  public var port: UInt16
-  public var txt: [String: String]
+  public let name: String?
+  public let port: UInt16
+  public let txt: [String: String]
 
   public init(type: String, name: String? = nil, port: UInt16, txt: [String: String]) {
     self.type = type
@@ -50,10 +50,10 @@ public protocol NMOSServiceRegistration: Sendable {
 
 /// A service found by browsing, resolved to where it can be reached.
 public struct NMOSDiscoveredService: Sendable, Hashable {
-  public var name: String
-  public var host: String
-  public var port: UInt16
-  public var txt: [String: String]
+  public let name: String
+  public let host: String
+  public let port: UInt16
+  public let txt: [String: String]
 
   public init(name: String, host: String, port: UInt16, txt: [String: String]) {
     self.name = name

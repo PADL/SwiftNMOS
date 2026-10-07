@@ -19,10 +19,10 @@ import Foundation
 
 /// The response to a request the node made, to a Registration API for instance.
 public struct NMOSHTTPClientResponse: Sendable {
-  public var status: Int
-  public var body: Data
+  public let status: Int
+  public let body: Data
   /// The response headers, keyed by lower-cased name.
-  public var headers: [String: String]
+  public let headers: [String: String]
 
   public init(status: Int, body: Data = Data(), headers: [String: String] = [:]) {
     self.status = status

@@ -506,8 +506,8 @@ final class NMOSConnectionAPITests: XCTestCase {
 
   func testAbsoluteScheduledActivationCanBeCancelled() async throws {
     let path = "v1.2/single/senders/\(sender)/staged"
-    var time = NMOSTimestamp.now()
-    time.seconds += 3600
+    let now = NMOSTimestamp.now()
+    let time = NMOSTimestamp(seconds: now.seconds + 3600, nanoseconds: now.nanoseconds)
     let result = try await send(.PATCH, path, [
       "master_enable": false,
       "activation": ["mode": "activate_scheduled_absolute", "requested_time": .string(time.description)],
@@ -542,8 +542,8 @@ final class NMOSConnectionAPITests: XCTestCase {
   func testRequestedTimesThatCannotBeScheduledAreBadRequests() async throws {
     let path = "v1.2/single/receivers/\(receiver)/staged"
     let limit = NMOSConnectionAPI.maximumScheduleAhead
-    var beyond = NMOSTimestamp.now()
-    beyond.seconds += limit + 60
+    let now = NMOSTimestamp.now()
+    let beyond = NMOSTimestamp(seconds: now.seconds + limit + 60, nanoseconds: now.nanoseconds)
     // the largest numbers a client can write, and the first past what is accepted
     let refused: [(String, String)] = [
       ("activate_scheduled_relative", "9223372036854775807:0"),

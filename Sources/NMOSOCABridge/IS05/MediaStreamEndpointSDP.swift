@@ -56,33 +56,33 @@ public struct MediaStreamSDP: Sendable, Equatable {
   }
 
   /// Identity of the session, unique with `originAddress` for its lifetime.
-  public var sessionID: UInt64
+  public let sessionID: UInt64
   /// Incremented by the sender whenever the description changes.
-  public var sessionVersion: UInt64
+  public let sessionVersion: UInt64
   /// Address of the host that authored the description.
-  public var originAddress: String
-  public var sessionName: String
+  public let originAddress: String
+  public let sessionName: String
   /// Free text about the stream, the "i=" line; AES70-21 carries it as MediaInfo.
-  public var sessionInformation: String?
+  public let sessionInformation: String?
   /// Where the stream is sent: a multicast group, or the receiver for a unicast stream.
   public var destinationAddress: String
   public var destinationPort: UInt16
   /// Multicast scope, omitted from the connection line when nil.
-  public var timeToLive: UInt8?
+  public let timeToLive: UInt8?
   /// The address the stream is sent from, when the description filters on it (RFC 4570).
   public var sourceAddress: String?
-  public var payloadType: UInt8
+  public let payloadType: UInt8
   /// Bits per sample, carried in the encoding name as L16, L24 or L32.
-  public var sampleSize: UInt8
-  public var sampleRate: UInt32
-  public var channelCount: UInt16
+  public let sampleSize: UInt8
+  public let sampleRate: UInt32
+  public let channelCount: UInt16
   /// Packet duration in seconds.
-  public var packetTime: TimeInterval
+  public let packetTime: TimeInterval
   /// Grandmaster identity as the eight hyphen-separated octets of RFC 7273 §4.8.
-  public var ptpGrandmasterID: String?
-  public var ptpDomain: UInt8?
+  public let ptpGrandmasterID: String?
+  public let ptpDomain: UInt8?
   /// RTP timestamp of the media clock's zero point.
-  public var mediaClockOffset: UInt32?
+  public let mediaClockOffset: UInt32?
   public var direction: Direction
 
   public init(

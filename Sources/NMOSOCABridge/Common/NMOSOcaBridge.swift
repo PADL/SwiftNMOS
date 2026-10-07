@@ -23,12 +23,12 @@ import SwiftOCADevice
 /// What the host knows about itself that its OCA object model does not say.
 public struct NMOSOcaHost: Sendable, Hashable {
   /// Unique to the physical device and permanent; every resource ID derives from it.
-  public var seed: String
-  public var hostname: String?
+  public let seed: String
+  public let hostname: String?
   /// Where the HTTP server serving the NMOS APIs can be reached, preferably by address.
-  public var endpoints: [NMOSNodeResource.Endpoint]
+  public let endpoints: [NMOSNodeResource.Endpoint]
   /// The network interfaces senders and receivers can be bound to.
-  public var interfaces: [NMOSNodeResource.Interface]
+  public let interfaces: [NMOSNodeResource.Interface]
 
   public init(
     seed: String,

@@ -74,17 +74,17 @@ public extension [Int32] {
 
 /// MS-05-02 `NcPropertyDescriptor`.
 public struct NcPropertyDescriptor: Sendable, Hashable, NcJSONRepresentable {
-  public var description: String?
-  public var id: NcElementID
-  public var name: String
+  public let description: String?
+  public let id: NcElementID
+  public let name: String
   /// Nil when the property can hold a value of any type.
-  public var typeName: String?
-  public var isReadOnly: Bool
-  public var isNullable: Bool
-  public var isSequence: Bool
-  public var isDeprecated: Bool
+  public let typeName: String?
+  public let isReadOnly: Bool
+  public let isNullable: Bool
+  public let isSequence: Bool
+  public let isDeprecated: Bool
   /// An `NcParameterConstraints` object, when the property has constraints.
-  public var constraints: NMOSJSONValue?
+  public let constraints: NMOSJSONValue?
 
   public init(
     description: String? = nil,
@@ -120,12 +120,12 @@ public struct NcPropertyDescriptor: Sendable, Hashable, NcJSONRepresentable {
 
 /// MS-05-02 `NcParameterDescriptor`.
 public struct NcParameterDescriptor: Sendable, Hashable, NcJSONRepresentable {
-  public var description: String?
-  public var name: String
-  public var typeName: String?
-  public var isNullable: Bool
-  public var isSequence: Bool
-  public var constraints: NMOSJSONValue?
+  public let description: String?
+  public let name: String
+  public let typeName: String?
+  public let isNullable: Bool
+  public let isSequence: Bool
+  public let constraints: NMOSJSONValue?
 
   public init(
     description: String? = nil,
@@ -157,12 +157,12 @@ public typealias NcFieldDescriptor = NcParameterDescriptor
 
 /// MS-05-02 `NcMethodDescriptor`.
 public struct NcMethodDescriptor: Sendable, Hashable, NcJSONRepresentable {
-  public var description: String?
-  public var id: NcElementID
-  public var name: String
-  public var resultDatatype: String
-  public var parameters: [NcParameterDescriptor]
-  public var isDeprecated: Bool
+  public let description: String?
+  public let id: NcElementID
+  public let name: String
+  public let resultDatatype: String
+  public let parameters: [NcParameterDescriptor]
+  public let isDeprecated: Bool
 
   public init(
     description: String? = nil,
@@ -191,11 +191,11 @@ public struct NcMethodDescriptor: Sendable, Hashable, NcJSONRepresentable {
 
 /// MS-05-02 `NcEventDescriptor`.
 public struct NcEventDescriptor: Sendable, Hashable, NcJSONRepresentable {
-  public var description: String?
-  public var id: NcElementID
-  public var name: String
-  public var eventDatatype: String
-  public var isDeprecated: Bool
+  public let description: String?
+  public let id: NcElementID
+  public let name: String
+  public let eventDatatype: String
+  public let isDeprecated: Bool
 
   public init(
     description: String? = nil,
@@ -221,9 +221,9 @@ public struct NcEventDescriptor: Sendable, Hashable, NcJSONRepresentable {
 
 /// MS-05-02 `NcClassDescriptor`: what a class itself defines, without what it inherits.
 public struct NcClassDescriptor: Sendable, Hashable, NcJSONRepresentable {
-  public var description: String?
-  public var classID: NcClassID
-  public var name: String
+  public let description: String?
+  public let classID: NcClassID
+  public let name: String
   /// The role every instance has, which only managers are given.
   public var fixedRole: String?
   public var properties: [NcPropertyDescriptor]
@@ -259,9 +259,9 @@ public struct NcClassDescriptor: Sendable, Hashable, NcJSONRepresentable {
 
 /// MS-05-02 `NcEnumItemDescriptor`.
 public struct NcEnumItemDescriptor: Sendable, Hashable, NcJSONRepresentable {
-  public var description: String?
-  public var name: String
-  public var value: UInt16
+  public let description: String?
+  public let name: String
+  public let value: UInt16
 
   public init(description: String? = nil, name: String, value: UInt16) {
     self.description = description
@@ -296,10 +296,10 @@ public struct NcDatatypeDescriptor: Sendable, Hashable, NcJSONRepresentable {
     }
   }
 
-  public var description: String?
-  public var name: String
-  public var kind: Kind
-  public var constraints: NMOSJSONValue?
+  public let description: String?
+  public let name: String
+  public let kind: Kind
+  public let constraints: NMOSJSONValue?
 
   public init(description: String? = nil, name: String, kind: Kind, constraints: NMOSJSONValue? = nil) {
     self.description = description
@@ -331,14 +331,14 @@ public struct NcDatatypeDescriptor: Sendable, Hashable, NcJSONRepresentable {
 
 /// MS-05-02 `NcBlockMemberDescriptor`.
 public struct NcBlockMemberDescriptor: Sendable, Hashable, NcJSONRepresentable {
-  public var description: String?
-  public var role: String
-  public var oid: NcOid
-  public var constantOid: Bool
-  public var classID: NcClassID
-  public var userLabel: String?
+  public let description: String?
+  public let role: String
+  public let oid: NcOid
+  public let constantOid: Bool
+  public let classID: NcClassID
+  public let userLabel: String?
   /// The block that contains the member.
-  public var owner: NcOid
+  public let owner: NcOid
 
   public init(
     description: String? = nil,
@@ -370,8 +370,8 @@ public struct NcBlockMemberDescriptor: Sendable, Hashable, NcJSONRepresentable {
 /// MS-05-02 `NcTouchpointNmos`: the IS-04 resource an object stands for.
 public struct NcTouchpoint: Sendable, Hashable, NcJSONRepresentable {
   /// The resource type, as IS-04 names it: `node`, `device`, `sender`, `receiver`...
-  public var resourceType: String
-  public var id: NMOSID
+  public let resourceType: String
+  public let id: NMOSID
 
   public init(resourceType: String, id: NMOSID) {
     self.resourceType = resourceType
@@ -397,11 +397,11 @@ public enum NcPropertyChangeType: Int64, Sendable {
 /// MS-05-02 `NcPropertyConstraintsNumber`: the range the value of a numeric property is
 /// held to. A bound that is nil is not constrained.
 public struct NcPropertyConstraintsNumber: Sendable, Hashable, NcJSONRepresentable {
-  public var propertyID: NcElementID
-  public var defaultValue: NMOSJSONValue?
-  public var minimum: NMOSJSONValue?
-  public var maximum: NMOSJSONValue?
-  public var step: NMOSJSONValue?
+  public let propertyID: NcElementID
+  public let defaultValue: NMOSJSONValue?
+  public let minimum: NMOSJSONValue?
+  public let maximum: NMOSJSONValue?
+  public let step: NMOSJSONValue?
 
   public init(
     propertyID: NcElementID,
@@ -427,10 +427,10 @@ public struct NcPropertyConstraintsNumber: Sendable, Hashable, NcJSONRepresentab
 
 /// MS-05-02 `NcPropertyChangedEventData`, the data of the `PropertyChanged` event.
 public struct NcPropertyChangedEventData: Sendable, Hashable, NcJSONRepresentable {
-  public var propertyID: NcElementID
-  public var changeType: NcPropertyChangeType
-  public var value: NMOSJSONValue
-  public var sequenceItemIndex: UInt32?
+  public let propertyID: NcElementID
+  public let changeType: NcPropertyChangeType
+  public let value: NMOSJSONValue
+  public let sequenceItemIndex: UInt32?
 
   public init(
     propertyID: NcElementID,

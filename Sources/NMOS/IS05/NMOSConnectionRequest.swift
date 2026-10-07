@@ -28,13 +28,23 @@ public enum NMOSActivationMode: String, Sendable, Hashable {
 /// The `activation` object of a staged or active resource. All three members are null
 /// when no activation has been requested.
 struct NMOSActivation: Sendable, Hashable {
-  var mode: NMOSActivationMode?
+  let mode: NMOSActivationMode?
   /// An absolute TAI time, or for a relative activation the offset that was asked for.
   var requestedTime: NMOSTimestamp?
   /// When the settings became, or will become, active.
   var activationTime: NMOSTimestamp?
 
   static let none = NMOSActivation()
+
+  init(
+    mode: NMOSActivationMode? = nil,
+    requestedTime: NMOSTimestamp? = nil,
+    activationTime: NMOSTimestamp? = nil
+  ) {
+    self.mode = mode
+    self.requestedTime = requestedTime
+    self.activationTime = activationTime
+  }
 
   var json: NMOSJSONValue {
     [
@@ -48,38 +58,33 @@ struct NMOSActivation: Sendable, Hashable {
 /// A `PATCH` to `/staged`, checked against the stage schema. Members the request left
 /// out are nil and leave what is staged unchanged.
 struct NMOSStageRequest: Sendable {
-  var masterEnable: Bool?
+  let masterEnable: Bool?
   /// The outer optional is whether the request named a peer; the inner is null.
-  var peerID: NMOSID??
-  var transportParameters: [NMOSTransportParameters]?
-  var transportFile: NMOSTransportFile?
+  let peerID: NMOSID??
+  let transportParameters: [NMOSTransportParameters]?
+  let transportFile: NMOSTransportFile?
   /// The outer optional is whether the request had an `activation` at all.
-  var activation: NMOSActivation?
+  let activation: NMOSActivation?
 
   init(_ json: NMOSJSONValue, kind: NMOSResourceKind) throws {
     guard let object = json.objectValue else {
       throw NMOSHTTPError.badRequest("The request body must be a JSON object")
     }
     let peerKey = kind == .sender ? "receiver_id" : "sender_id"
-    for (key, value) in object {
-      switch key {
-      case "master_enable":
-        guard let enable = value.boolValue else {
-          throw NMOSHTTPError.badRequest("`master_enable` must be a boolean")
-        }
-        masterEnable = enable
-      case peerKey:
-        peerID = try .some(Self.peer(value, key: peerKey))
-      case "activation":
-        activation = try Self.activation(value)
-      case "transport_params":
-        transportParameters = try Self.legs(value)
-      case "transport_file" where kind == .receiver:
-        transportFile = try Self.transportFile(value)
-      default:
-        throw NMOSHTTPError.badRequest("Un-recognised parameter '\(key)'")
-      }
+    let known = ["master_enable", peerKey, "activation", "transport_params"] + (kind == .receiver ? ["transport_file"] : [])
+    if let key = object.keys.first(where: { !known.contains($0) }) {
+      throw NMOSHTTPError.badRequest("Un-recognised parameter '\(key)'")
     }
+    masterEnable = try object["master_enable"].map {
+      guard let enable = $0.boolValue else {
+        throw NMOSHTTPError.badRequest("`master_enable` must be a boolean")
+      }
+      return enable
+    }
+    peerID = try object[peerKey].map { try Self.peer($0, key: peerKey) }
+    activation = try object["activation"].map(Self.activation)
+    transportParameters = try object["transport_params"].map(Self.legs)
+    transportFile = try object["transport_file"].map(Self.transportFile)
   }
 
   private static func peer(_ value: NMOSJSONValue, key: String) throws -> NMOSID? {
@@ -97,23 +102,24 @@ struct NMOSStageRequest: Sendable {
     else {
       throw NMOSHTTPError.badRequest("`activation` must be an object with a `mode`")
     }
-    var activation = NMOSActivation()
+    var parsedMode: NMOSActivationMode?
     if !mode.isNull {
       guard let parsed = mode.stringValue.flatMap(NMOSActivationMode.init(rawValue:)) else {
         throw NMOSHTTPError.badRequest("`mode` is not an activation mode")
       }
-      activation.mode = parsed
+      parsedMode = parsed
     }
+    var requestedTime: NMOSTimestamp?
     if let time = object["requested_time"], !time.isNull {
       guard let parsed = time.stringValue.flatMap(NMOSTimestamp.init) else {
         throw NMOSHTTPError.badRequest("`requested_time` must be a TAI timestamp, <seconds>:<nanoseconds>")
       }
-      activation.requestedTime = parsed
+      requestedTime = parsed
     }
-    if activation.mode?.isScheduled == true, activation.requestedTime == nil {
+    if parsedMode?.isScheduled == true, requestedTime == nil {
       throw NMOSHTTPError.badRequest("A scheduled activation needs a `requested_time`")
     }
-    return activation
+    return NMOSActivation(mode: parsedMode, requestedTime: requestedTime)
   }
 
   private static func legs(_ value: NMOSJSONValue) throws -> [NMOSTransportParameters] {

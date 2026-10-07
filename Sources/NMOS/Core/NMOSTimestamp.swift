@@ -19,8 +19,8 @@ import Foundation
 /// A TAI timestamp, written `<seconds>:<nanoseconds>`. IS-04 uses one as each resource's
 /// `version` and IS-05 uses them for scheduled activations.
 public struct NMOSTimestamp: Sendable, Hashable, Comparable, CustomStringConvertible {
-  public var seconds: Int64
-  public var nanoseconds: Int32
+  public let seconds: Int64
+  public let nanoseconds: Int32
 
   /// Seconds TAI is ahead of UTC; constant since the leap second of 2016-12-31.
   public static let taiOffset: Int64 = 37

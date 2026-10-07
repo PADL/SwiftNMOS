@@ -29,8 +29,8 @@ enum NcMessageType: Int64, Sendable {
 /// One command of a Command message, under its handle. A command whose handle can be
 /// read but whose oid, method or arguments cannot is still answered, with the reason.
 struct NcHandledCommand: Sendable, Equatable {
-  var handle: Int64
-  var command: Result<NcCommand, NcProtocolError>
+  let handle: Int64
+  let command: Result<NcCommand, NcProtocolError>
 }
 
 /// What a controller can send.
@@ -42,8 +42,8 @@ enum NcIncomingMessage: Sendable, Equatable {
 /// A message, or part of one, that cannot be acted on. As an Error message it answers
 /// what has no handle to answer under; as a command's error it becomes its result.
 struct NcProtocolError: Error, Sendable, Equatable {
-  var status: NcMethodStatus
-  var message: String
+  let status: NcMethodStatus
+  let message: String
 
   init(_ message: String, status: NcMethodStatus = .badCommandFormat) {
     self.status = status

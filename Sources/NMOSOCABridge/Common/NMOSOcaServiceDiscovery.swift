@@ -212,11 +212,11 @@ public struct NMOSOcaServiceDiscovery: NMOSServiceDiscovery {
 /// A service instance a browse found, or had found and has now lost.
 struct NMOSOcaBrowseEvent: Sendable, Hashable {
   /// False when the service has gone away.
-  var isAdded: Bool
-  var name: String
-  var regType: String
-  var domain: String
-  var interfaceIndex: UInt32
+  let isAdded: Bool
+  let name: String
+  let regType: String
+  let domain: String
+  let interfaceIndex: UInt32
 }
 
 /// Observes one browse: resolves each instance it finds and reports the resolved set.
