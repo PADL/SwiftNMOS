@@ -25,6 +25,7 @@ import XCTest
 
 /// A level meter as a vendor might make one: a clip indication of its own, which only the
 /// device sets, and a setting a controller may change.
+@OcaDeviceClass
 private final class ClippingMeter: SwiftOCADevice.OcaLevelSensor {
   override class var classID: OcaClassID {
     OcaClassID(parent: super.classID, authority: OcaOrganizationID((0x0A, 0xE9, 0x1B)), 12)

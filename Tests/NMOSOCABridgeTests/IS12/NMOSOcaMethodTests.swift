@@ -25,7 +25,7 @@ import XCTest
 
 /// An agent with methods of its own, among them ones that fail, and one the device
 /// refuses to every controller on the network.
-@OcaDeviceMethods
+@OcaDeviceClass
 private final class Calculator: SwiftOCADevice.OcaAgent {
   override class var classID: OcaClassID {
     // not under a vendor's authority, so that its methods are described
@@ -68,7 +68,7 @@ private final class Calculator: SwiftOCADevice.OcaAgent {
 }
 
 /// A class of PADL's, whose methods may be called but are not described.
-@OcaDeviceMethods
+@OcaDeviceClass
 private final class VendorDial: SwiftOCADevice.OcaAgent {
   override class var classID: OcaClassID {
     OcaClassID(parent: super.classID, authority: OcaOrganizationID((0x0A, 0xE9, 0x1B)), 12)
