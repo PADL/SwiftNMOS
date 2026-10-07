@@ -54,6 +54,24 @@ private final class TrimmedGain: SwiftOCADevice.OcaGain {
   var cellXY = OcaVector2D<OcaUint16>(x: 1, y: 2)
 }
 
+/// An identify actuator that, as a device's does, acts on being set active and then
+/// goes back to inactive.
+private final class MomentaryIdentify: SwiftOCADevice.OcaIdentificationActuator {
+  private(set) var requests = 0
+
+  override func handleCommand(
+    _ command: Ocp1Command,
+    from controller: OcaController
+  ) async throws -> Ocp1Response {
+    let response = try await super.handleCommand(command, from: controller)
+    if (command.methodID.defLevel, command.methodID.methodIndex) == (4, 2), active {
+      requests += 1
+      active = false
+    }
+    return response
+  }
+}
+
 /// An object whose device does not let a controller rename it.
 private final class FixedLabelGain: SwiftOCADevice.OcaGain {
   override func ensureWritable(by controller: any OcaController, command: Ocp1Command) async throws {
@@ -164,6 +182,7 @@ private enum Fixture {
   private(set) static var gain: SwiftOCADevice.OcaGain!
   private(set) static var trimmed: TrimmedGain!
   private(set) static var identify: SwiftOCADevice.OcaIdentificationActuator!
+  private(set) static var momentary: MomentaryIdentify!
   private(set) static var fixed: FixedLabelGain!
   private(set) static var locked: LockedLabelGain!
   private(set) static var localOnly: LocalOnlyAgent!
@@ -180,12 +199,13 @@ private enum Fixture {
     identify = try await SwiftOCADevice.OcaIdentificationActuator(
       role: "Identify.Now", deviceDelegate: device, addToRootBlock: false
     )
+    momentary = try await MomentaryIdentify(role: "Momentary", deviceDelegate: device, addToRootBlock: false)
     fixed = try await FixedLabelGain(role: "Fixed", deviceDelegate: device, addToRootBlock: false)
     fixed.label = "Factory"
     locked = try await LockedLabelGain(role: "Locked", deviceDelegate: device, addToRootBlock: false)
     locked.label = "Held"
     localOnly = try await LocalOnlyAgent(role: "LocalOnly", deviceDelegate: device, addToRootBlock: false)
-    for object in [gain, trimmed, identify, fixed, locked, localOnly] as [SwiftOCADevice.OcaRoot] {
+    for object in [gain, trimmed, identify, momentary, fixed, locked, localOnly] as [SwiftOCADevice.OcaRoot] {
       try await block.add(actionObject: object)
     }
     model = NMOSOcaDeviceModel(device: device, resourceIDs: { ids })
@@ -323,7 +343,8 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     // two objects with one OCA role, and a role with a dot in it
     let roles = await members(of: oid(Fixture.block.objectNumber)).compactMap { $0["role"]?.stringValue }
     XCTAssertEqual(
-      roles.prefix(6), ["Gain", "Gain_\(Fixture.trimmed.objectNumber)", "Identify_Now", "Fixed", "Locked", "LocalOnly"]
+      roles.prefix(7),
+      ["Gain", "Gain_\(Fixture.trimmed.objectNumber)", "Identify_Now", "Momentary", "Fixed", "Locked", "LocalOnly"]
     )
   }
 
@@ -440,6 +461,20 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     // NcWorker's property is OCA's, under NcWorker's ID
     let enabled = await get(identify, 2, 1)
     XCTAssertEqual(enabled.value, true)
+  }
+
+  @OcaDevice
+  func testIdentificationReachesTheDevicesOwnHandling() async throws {
+    let identify = oid(Fixture.momentary.objectNumber)
+    // a subclass that declares nothing of its own is presented as its OCA class is
+    let classID = try await classID(of: identify)
+    let standard = try await self.classID(of: oid(Fixture.identify.objectNumber))
+    XCTAssertEqual(classID, standard)
+    let written = await set(identify, 3, 1, true)
+    XCTAssertEqual(written.status, .ok)
+    XCTAssertEqual(Fixture.momentary.requests, 1)
+    let after = await get(identify, 3, 1)
+    XCTAssertEqual(after.value, false)
   }
 
   // MARK: Properties

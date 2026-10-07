@@ -99,8 +99,8 @@ private enum NMOSDeviceApp {
     try await serve(on: interface, options: options, logger: logger)
   }
 
-  /// The device's objects: a mixer, a network interface standing for the host's, and
-  /// the two transport applications on it.
+  /// The device's objects: a mixer, an identify actuator, a network interface standing
+  /// for the host's, and the two transport applications on it.
   @OcaDevice
   private static func makeDevice(on host: HostInterface, options: Options) async throws {
     let device = OcaDevice.shared
@@ -111,6 +111,7 @@ private enum NMOSDeviceApp {
     deviceManager?.deviceName = name.isEmpty ? "NMOSDevice" : name
 
     try await Mixer.make(channels: max(options.receivers, 1), device: device)
+    _ = try await Identify(role: "Identify", deviceDelegate: device)
 
     let networkManager = try await SwiftOCADevice.OcaNetworkManager(deviceDelegate: device)
     let interface = try await SwiftOCADevice.OcaNetworkInterface(role: "Interface", deviceDelegate: device)
