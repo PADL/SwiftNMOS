@@ -95,7 +95,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   private let device: OcaDevice
   private let mapping: NMOSOcaControlMapping
   /// The oid the class manager is presented under.
-  nonisolated var classManagerOid: NcOid { mapping.oid(of: OcaClassManager.objectNumber) }
+  nonisolated var classManagerOid: NcOid { mapping.oid(of: SwiftOCA.OcaClassManager.objectNumber) }
   private let adaptations: NMOSOcaAdaptations
   private let classes: NMOSOcaControlClasses
   private let labels: any NMOSOcaLabelStore
@@ -107,7 +107,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   let endpoint = NMOSOcaControlEndpoint()
   /// Giving the device the endpoint and the class manager, which every caller waits for.
   private var registration: Task<Void, Never>?
-  private var handle: OcaUint32 = 0
   /// Each block's members' roles, with the members they were worked out for.
   private var roles = [OcaONo: (members: [OcaONo], roles: [OcaONo: String])]()
   private nonisolated let listeners = Mutex([NcSession: AsyncStream<NcNotification>.Continuation]())
@@ -237,7 +236,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       do { try await device.add(endpoint: endpoint) } catch {
         logger.error("not receiving events: the device refused the NMOS control endpoint: \(error)")
       }
-      do { _ = try await OcaClassManager.shared(on: device) } catch {
+      do { _ = try await SwiftOCADevice.OcaClassManager.shared(on: device) } catch {
         logger.error("not presenting the class manager: the device refused it: \(error)")
       }
     }
@@ -330,7 +329,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     for (id, binding) in properties {
       // a bounded property's getter names its value, then its lower and upper bounds
       guard case let .property(description, schema?, .none) = binding.value,
-            description.ocp2GetNames.count == 3, schema.isNumber, let getter = description.getMethodID
+            description.flags.contains(.bounded), schema.isNumber, let getter = description.getMethodID
       else { continue }
       let (status, answer) = await send(getter, to: entry.object, as: controller)
       guard status == .ok, let answer else { continue }
@@ -400,8 +399,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       return .error(.propertyNotImplemented, "\(description.name) cannot be read")
     }
     let (status, parameters) = await send(getter, to: object, as: controller)
-    // an OCA getter refuses to return nil, which here is simply a null value
-    if status == .parameterOutOfRange { return NcMethodResult(value: .null) }
     guard status == .ok else {
       return .error(status.ncStatus(.get), "Reading \(description.name) failed: \(status)")
     }
@@ -537,13 +534,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     _ parameters: [String: Any] = [:],
     as controller: NMOSOcaControlController
   ) async -> (OcaStatus, [String: any Sendable]?) {
-    handle &+= 1
-    let command = Ocp1Command(
-      handle: handle, targetONo: object.objectNumber, methodID: method,
-      parameters: OcaParameters(ocp2Parameters: parameters)
-    )
-    let response = await device.handleCommand(command, from: controller)
-    return (response.statusCode, response.parameters.ocp2Parameters)
+    await device.send(method, to: object.objectNumber, ocp2Parameters: parameters, from: controller)
   }
 
   // MARK: - Classes

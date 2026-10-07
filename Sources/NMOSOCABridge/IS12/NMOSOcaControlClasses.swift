@@ -145,7 +145,7 @@ final class NMOSOcaControlClasses {
       presentation.standardIDs[label.propertyID] = .userLabel
     }
     // NcObject states an object's owner from where it is found, not from what it says
-    presentation.consumed.formUnion(declared.values.filter { $0.name == mapping.ownerProperty }.map(\.propertyID))
+    presentation.consumed.formUnion(declared.values.filter { $0.flags.contains(.owner) }.map(\.propertyID))
 
     // what the OCA classes have beyond that, one non-standard class per OCA class
     var descriptors = [NcClassDescriptor]()
@@ -207,10 +207,7 @@ final class NMOSOcaControlClasses {
   private func userLabel(
     in declared: [OcaPropertyID: OcaDevicePropertyDescriptor]
   ) -> OcaDevicePropertyDescriptor? {
-    declared.values.first {
-      $0.name == mapping.userLabelProperty && $0.valueType == String.self
-        && $0.getMethodID != nil && $0.isSettable
-    }
+    declared.values.first { $0.flags.contains(.label) && $0.getMethodID != nil && $0.isSettable }
   }
 
   /// One OCA class's own elements, at `level`, as a non-standard class.
@@ -249,11 +246,12 @@ final class NMOSOcaControlClasses {
       // events are of one component each, so it is presented as its two components
       let components: [(name: String, id: OcaPropertyID, binding: NMOSOcaPropertyBinding.Value)]
       let schema: NMOSOcaSchema
-      if let yPropertyID = property.yPropertyID, let componentType = property.componentType {
+      if let yPropertyID = property.yPropertyID, let componentType = property.componentType,
+         let names = property.componentNames
+      {
         schema = try datatypes.schema(of: componentType)
-        let stem = property.name.hasSuffix("XY") ? String(property.name.dropLast(2)) : property.name
-        components = [("X", property.propertyID), ("Y", yPropertyID)].map { axis, id in
-          (stem + axis, id, .component(property, field: Ocp2Encoder.fieldName(axis.lowercased()), schema))
+        components = [(names.x, property.propertyID, "x"), (names.y, yPropertyID, "y")].map { name, id, field in
+          (name, id, .component(property, field: Ocp2Encoder.fieldName(field), schema))
         }
       } else {
         schema = try datatypes.schema(of: property.valueType)

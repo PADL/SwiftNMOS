@@ -76,9 +76,6 @@ public struct NMOSOcaControlMapping: Sendable {
   public var anchors: [Anchor]
   /// The negated organisation ID of whoever defines the classes that follow the anchor.
   public var authorityKey: Int32
-  /// The Swift names of the OCA properties that serve `userLabel` and `owner`.
-  public var userLabelProperty: String
-  public var ownerProperty: String
   /// The Swift name of the device manager's list of the device's managers.
   public var managersProperty: String
   /// MS-05-02 fixes the root block's oid and role; OCA numbers its device manager 1.
@@ -110,7 +107,7 @@ public struct NMOSOcaControlMapping: Sendable {
       ]),
       Anchor("1.3", NcStandardModel.manager),
       // its OCA methods are NcClassManager's own, in OCA's terms
-      Anchor(OcaClassManager.classID, NcStandardModel.classManager, hideSubclasses: true),
+      Anchor(SwiftOCA.OcaClassManager.classID, NcStandardModel.classManager, hideSubclasses: true),
       Anchor("1.3.1", NcStandardModel.deviceManager, [
         Property(3, 2, .property("3.15")),
         Property(3, 3, .property("3.16")),
@@ -124,8 +121,6 @@ public struct NMOSOcaControlMapping: Sendable {
       ]),
     ],
     authorityKey: -0x000B5E,
-    userLabelProperty: "label",
-    ownerProperty: "owner",
     managersProperty: "managers",
     rootRole: "root",
     oids: [OcaRootBlockONo: NcObjectModel<NMOSOcaObjectSource>.rootOid, OcaDeviceManagerONo: OcaRootBlockONo]

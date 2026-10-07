@@ -22,23 +22,18 @@ applied to the class IDs above. It holds for properties and methods alike.
 
 ## The class manager
 
-AES70 has no class manager, so the bridge adds one to the device: `OcaClassManager`, an
-OCA manager of PADL's (class `1.3.<PADL>.1`, object number 4095, the last AES70
-reserves). It is registered with the device like any manager, so it is listed in the
-device manager's `Managers`, which the root block's members include; the mapping anchors
-it to `NcClassManager`, and it is presented as `NcClassManager` itself, whose methods and
-properties `NcObjectModel` answers for any object the source presents with that class. Nothing in the object model is special to
-its oid.
+AES70 has no class manager, so the bridge adds SwiftOCADevice's `OcaClassManager` to the
+device (PADL's class `1.3.<PADL>.1`, object number 4095, the last AES70 reserves). It is
+registered with the device like any manager, so it is listed in the device manager's
+`Managers`, which the root block's members include. To an OCA controller it describes
+the classes of the device's objects in OCA's terms (`GetControlClass`,
+`GetControlClasses`), with descriptors that correspond to MS-05-02's.
 
-To an OCA controller it describes the classes of the device's objects in OCA's terms:
-`GetControlClass(ClassID, IncludeInherited)` and `GetControlClasses()`, with descriptors
-(`OcaClassDescriptor` and its property, method and parameter descriptors) that
-correspond to MS-05-02's. They and the controller's `OcaClassManager` are in the
-`SwiftOCAClassManager` library, which knows nothing of NMOS; a controller calls
-`OcaClassManager.register()` to resolve the device's class manager to it. Its methods
-are NcClassManager's own in OCA's terms, so IS-12 presents it as `NcClassManager`
-exactly: its anchor hides it and the OCA classes above it (`hideSubclasses`), so nothing
-of them is presented beyond the standard class.
+Its methods are NcClassManager's own in OCA's terms, so IS-12 presents it as
+`NcClassManager` exactly: its anchor hides it and the OCA classes above it
+(`hideSubclasses`), and `NcObjectModel` answers NcClassManager's methods and properties
+for it, as for any object the source presents with that class. Nothing in the object
+model is special to its oid.
 
 ## The one exception: OcaRoot
 
