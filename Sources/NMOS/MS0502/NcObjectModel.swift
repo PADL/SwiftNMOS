@@ -103,12 +103,12 @@ public extension NcObjectSource {
     .error(.methodNotImplemented, "No method \(command.methodID.level)m\(command.methodID.index)")
   }
 
-  private func runtimeConstraints(of object: Identity, session: NcSession) async -> [NMOSJSONValue] { [] }
+  func runtimeConstraints(of object: Identity, session: NcSession) async -> [NMOSJSONValue] { [] }
   func touchpoints(of object: Identity) async -> [NcTouchpoint]? { nil }
-  private func classes() async -> [NcClassDescriptor] { [] }
-  private func datatypes() async -> [NcDatatypeDescriptor] { [] }
+  func classes() async -> [NcClassDescriptor] { [] }
+  func datatypes() async -> [NcDatatypeDescriptor] { [] }
   func subscriptionsChanged(to oids: Set<NcOid>, session: NcSession) async {}
-  private func sessionEnded(_ session: NcSession) async {}
+  func sessionEnded(_ session: NcSession) async {}
 }
 
 /// An MS-05-02 device model over a source of objects. Each object the source presents is
@@ -121,6 +121,8 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
 
   /// What the class manager answers with, shared by every session.
   let descriptors = NcDescriptorCache()
+  /// Each session's notifications as they are completed, waited for when it ends.
+  private let notifiers = Mutex([NcSession: Task<Void, Never>]())
 
   public init(source: Source) {
     self.source = source
@@ -175,6 +177,7 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
         continuation.finish()
       }
       continuation.onTermination = { _ in task.cancel() }
+      notifiers.withLock { $0[session] = task }
     }
   }
 
@@ -191,7 +194,12 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
     await source.subscriptionsChanged(to: oids, session: session)
   }
 
+  /// A notification being completed reads from the source as the session, so the source
+  /// is told the session has ended only once that is done.
   public func sessionEnded(_ session: NcSession) async {
+    let notifier = notifiers.withLock { $0.removeValue(forKey: session) }
+    notifier?.cancel()
+    await notifier?.value
     await source.sessionEnded(session)
   }
 }

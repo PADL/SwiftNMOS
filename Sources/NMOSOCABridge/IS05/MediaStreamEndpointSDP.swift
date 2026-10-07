@@ -43,7 +43,7 @@ public protocol MediaStreamEndpointSDPRepresentable: SwiftOCADevice.OcaMediaTran
 }
 
 public extension MediaStreamEndpointSDPRepresentable {
-  private func usesSessionDescription(_ id: OcaMediaStreamEndpointID) async -> Bool { true }
+  func usesSessionDescription(_ id: OcaMediaStreamEndpointID) async -> Bool { true }
 }
 
 /// The subset of an AES67 audio session description that the transports exchange:

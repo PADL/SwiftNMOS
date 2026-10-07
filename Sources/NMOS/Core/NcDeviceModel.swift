@@ -171,5 +171,5 @@ public protocol NcDeviceModel: Sendable {
 
 public extension NcDeviceModel {
   func subscriptionsChanged(to oids: Set<NcOid>, session: NcSession) async {}
-  private func sessionEnded(_ session: NcSession) async {}
+  func sessionEnded(_ session: NcSession) async {}
 }
