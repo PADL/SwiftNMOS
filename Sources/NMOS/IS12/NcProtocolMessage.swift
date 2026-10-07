@@ -17,7 +17,7 @@
 import Foundation
 
 /// The `messageType` of an IS-12 protocol message.
-enum NcMessageType: Int64, Sendable {
+private enum NcMessageType: Int64, Sendable {
   case command = 0
   case commandResponse = 1
   case notification = 2
@@ -54,7 +54,7 @@ struct NcProtocolError: Error, Sendable, Equatable {
 /// Reads and writes IS-12 messages as the JSON the schemas describe.
 enum NcProtocolCodec {
   /// Handles pair a response with its command and are confined to 16 bits.
-  static let handles: ClosedRange<Int64> = 1...65535
+  private static let handles: ClosedRange<Int64> = 1...65535
 
   static func parse(_ data: Data) throws(NcProtocolError) -> NcIncomingMessage {
     guard let json = try? NMOSJSONValue(data: data), let message = json.objectValue else {

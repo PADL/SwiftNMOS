@@ -22,7 +22,7 @@ import SwiftOCADevice
 
 extension NMOSOcaBridge {
   /// The IS-04 node: named by the device manager, reachable where the host says.
-  func nodeResource(
+  private func nodeResource(
     ids: NMOSOcaResourceIDs,
     host: NMOSOcaHost,
     deviceManager: SwiftOCADevice.OcaDeviceManager,

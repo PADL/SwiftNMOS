@@ -166,7 +166,7 @@ class NcObject<Source: NcObjectSource> {
     .error(.invalidRequest, "Property \(property.level)p\(property.index) is not a sequence")
   }
 
-  static func noProperty(_ property: NcElementID) -> NcMethodResult {
+  private static func noProperty(_ property: NcElementID) -> NcMethodResult {
     .error(.propertyNotImplemented, "No property \(property.level)p\(property.index)")
   }
 

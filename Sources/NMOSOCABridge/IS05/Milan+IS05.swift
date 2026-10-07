@@ -23,8 +23,8 @@ import SwiftOCADevice
 /// stream, which a talker's entity ID and stream index name, so those two are the
 /// transport parameters: of a receiver the talker it is bound to, of a sender its own.
 extension NMOSOcaMilanAdaptation: NMOSOcaConnecting {
-  static let entityID = "entity_id"
-  static let streamIndex = "stream_index"
+  private static let entityID = "entity_id"
+  private static let streamIndex = "stream_index"
 
   public func transportType(of endpoint: NMOSOcaEndpoint) async -> String { NMOSOcaTransport.milan }
 

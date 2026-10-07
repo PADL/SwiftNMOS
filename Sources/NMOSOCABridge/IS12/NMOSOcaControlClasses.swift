@@ -69,7 +69,7 @@ struct NMOSOcaControlClass: Sendable {
 /// datatypes a class manager publishes are those of the classes met so far.
 @OcaDevice
 final class NMOSOcaControlClasses {
-  let mapping: NMOSOcaControlMapping
+  private let mapping: NMOSOcaControlMapping
   let datatypes: NMOSOcaDatatypes
   private let logger: Logger
   private var classes = [ObjectIdentifier: NMOSOcaControlClass]()

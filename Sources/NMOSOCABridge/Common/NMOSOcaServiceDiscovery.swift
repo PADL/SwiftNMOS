@@ -190,8 +190,8 @@ public struct NMOSOcaServiceDiscovery: NMOSServiceDiscovery {
 /// it reachable only by a configured registry.
 public struct NMOSOcaServiceDiscovery: NMOSServiceDiscovery {
   private struct Registration: NMOSServiceRegistration {
-    func update(txt: [String: String]) async throws {}
-    func withdraw() async {}
+    private func update(txt: [String: String]) async throws {}
+    private func withdraw() async {}
   }
 
   public init(searchDomains: @escaping @Sendable () async -> [String] = { [] }) {}

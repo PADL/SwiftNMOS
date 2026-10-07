@@ -34,8 +34,8 @@ import Glibc
 ///     NMOSDevice [--port 8080] [--oca-port 65000] [--registry URL | --peer-to-peer]
 ///                [--receivers 4] [--senders 4]
 @main
-enum NMOSDeviceApp {
-  struct Options {
+private enum NMOSDeviceApp {
+  private struct Options {
     var port: UInt16 = 8080
     var ocaPort: UInt16 = 65000
     var registryURL: URL?
@@ -75,7 +75,7 @@ enum NMOSDeviceApp {
     }
   }
 
-  struct Usage: Error, CustomStringConvertible {
+  private struct Usage: Error, CustomStringConvertible {
     let description: String
     init(_ description: String) { self.description = description }
   }

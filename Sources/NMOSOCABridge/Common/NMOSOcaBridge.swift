@@ -51,8 +51,8 @@ public final class NMOSOcaBridge: Sendable {
   public typealias HostProvider = @Sendable () async -> NMOSOcaHost
 
   let device: OcaDevice
-  let store: NMOSResourceStore
-  let logger: Logger
+  private let store: NMOSResourceStore
+  private let logger: Logger
   let walker: NMOSOcaEndpointWalker
   let adaptations: NMOSOcaAdaptations
   let controls: [NMOSControl]

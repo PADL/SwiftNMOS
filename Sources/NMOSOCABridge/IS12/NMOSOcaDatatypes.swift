@@ -48,7 +48,7 @@ indirect enum NMOSOcaSchema: Sendable, Hashable {
 
 extension NMOSOcaSchema {
   /// Whether a value of the schema is one plain value, which is never absent.
-  var isPlain: Bool {
+  private var isPlain: Bool {
     switch self {
     case .bool, .integer, .float, .string, .enumeration, .objectNumber: true
     default: false
@@ -73,7 +73,7 @@ struct NMOSOcaTypeReference: Sendable, Hashable {
 }
 
 /// A type MS-05-02 cannot describe, so a property of that type is not presented.
-struct NMOSOcaUnsupportedType: Error, CustomStringConvertible {
+private struct NMOSOcaUnsupportedType: Error, CustomStringConvertible {
   let description: String
 
   init(_ type: Any.Type, _ reason: String) {
@@ -414,7 +414,7 @@ final class NMOSOcaDatatypes {
 }
 
 /// A value that is not of the schema its type was given.
-struct NMOSOcaValueError: Error, CustomStringConvertible {
+private struct NMOSOcaValueError: Error, CustomStringConvertible {
   let schema: NMOSOcaSchema
   let value: NMOSJSONValue
 

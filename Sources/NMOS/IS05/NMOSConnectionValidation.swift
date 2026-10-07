@@ -19,7 +19,7 @@ import Foundation
 /// Checks transport parameters a client asks to stage: against the transport's own
 /// schema where IS-05 defines one, and against the constraints the endpoint publishes.
 enum NMOSConnectionValidation {
-  static let rtp = "urn:x-nmos:transport:rtp"
+  private static let rtp = "urn:x-nmos:transport:rtp"
 
   /// The transports IS-05 v1.1 itself defines; any other needs v1.2.
   static let transportsBeforeV1_2: Set<String> = [
@@ -122,7 +122,7 @@ enum NMOSConnectionValidation {
     }
   }
 
-  static func isAddress(_ string: String) -> Bool {
+  private static func isAddress(_ string: String) -> Bool {
     var ip4 = in_addr()
     var ip6 = in6_addr()
     return inet_pton(AF_INET, string, &ip4) == 1 || inet_pton(AF_INET6, string, &ip6) == 1

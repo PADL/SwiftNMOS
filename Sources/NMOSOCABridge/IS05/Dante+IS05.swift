@@ -23,8 +23,8 @@ import SwiftOCADevice
 /// transmit channel it subscribes to, so those two names are its transport parameters,
 /// and a transmit channel's parameters are the names a receiver would subscribe with.
 extension NMOSOcaDanteAdaptation: NMOSOcaConnecting {
-  static let deviceName = "device_name"
-  static let channelName = "channel_name"
+  private static let deviceName = "device_name"
+  private static let channelName = "channel_name"
 
   /// How long a subscription is given to appear in the device's own state.
   private static let settleTime = Duration.seconds(2)
@@ -99,8 +99,8 @@ extension NMOSOcaDanteAdaptation: NMOSOcaConnecting {
     ]]
   }
 
-  static let deviceNamePattern = "^[A-Za-z0-9-]{1,31}$"
-  static let channelNamePattern = "^[^@]{1,31}$"
+  private static let deviceNamePattern = "^[A-Za-z0-9-]{1,31}$"
+  private static let channelNamePattern = "^[^@]{1,31}$"
 
   public func transportFile(of endpoint: NMOSOcaEndpoint) async throws -> NMOSTransportFile? { nil }
 

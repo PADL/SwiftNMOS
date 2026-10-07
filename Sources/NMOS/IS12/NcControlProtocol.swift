@@ -84,7 +84,7 @@ struct NcControlConnection: WSMessageHandler {
 }
 
 /// One controller's session: the commands it sends and the objects it subscribed to.
-final class NcControlSession: Sendable {
+private final class NcControlSession: Sendable {
   private let model: any NcDeviceModel
   private let session: NcSession
   private let output: AsyncStream<WSMessage>.Continuation

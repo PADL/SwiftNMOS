@@ -20,11 +20,11 @@ import Foundation
 import Logging
 
 /// A Registration API the node could register with.
-struct NMOSRegistry: Sendable, Hashable {
+private struct NMOSRegistry: Sendable, Hashable {
   /// The root of its HTTP server, such as `http://registry:8010`.
   let url: URL
   /// Lower is preferred; 100 and above are registries under development.
-  let priority: Int
+  private let priority: Int
 
   static let version = NMOSAPIVersion.v1_3
 
@@ -459,7 +459,7 @@ actor NMOSNodeRegistration {
   /// The service instance name: the node's label, so that a renamed device is found
   /// under its new name, cut to the 63 bytes of UTF-8 a DNS-SD label can hold without
   /// splitting a character. Nil for an empty label leaves the name to the responder.
-  static func instanceName(_ label: String) -> String? {
+  private static func instanceName(_ label: String) -> String? {
     var name = label
     while name.utf8.count > 63 {
       name.removeLast()

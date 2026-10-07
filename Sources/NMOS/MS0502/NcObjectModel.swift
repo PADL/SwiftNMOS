@@ -103,12 +103,12 @@ public extension NcObjectSource {
     .error(.methodNotImplemented, "No method \(command.methodID.level)m\(command.methodID.index)")
   }
 
-  func runtimeConstraints(of object: Identity, session: NcSession) async -> [NMOSJSONValue] { [] }
+  private func runtimeConstraints(of object: Identity, session: NcSession) async -> [NMOSJSONValue] { [] }
   func touchpoints(of object: Identity) async -> [NcTouchpoint]? { nil }
-  func classes() async -> [NcClassDescriptor] { [] }
-  func datatypes() async -> [NcDatatypeDescriptor] { [] }
+  private func classes() async -> [NcClassDescriptor] { [] }
+  private func datatypes() async -> [NcDatatypeDescriptor] { [] }
   func subscriptionsChanged(to oids: Set<NcOid>, session: NcSession) async {}
-  func sessionEnded(_ session: NcSession) async {}
+  private func sessionEnded(_ session: NcSession) async {}
 }
 
 /// An MS-05-02 device model over a source of objects. Each object the source presents is
@@ -319,7 +319,7 @@ final class NcSequenceLocks: Sendable {
 /// A method's arguments, read by the names its descriptor gives them. What is missing
 /// or of the wrong type is a parameter error, reported under the command's handle.
 struct NcArguments {
-  let values: [String: NMOSJSONValue]
+  private let values: [String: NMOSJSONValue]
 
   init(_ values: [String: NMOSJSONValue]) {
     self.values = values
