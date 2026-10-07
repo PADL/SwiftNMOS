@@ -121,13 +121,18 @@ final class NMOSOcaServiceBrowserTests: XCTestCase {
   }
 
   func testWaitsLongerBetweenAttemptsUpToALimit() async throws {
-    // waits of 10, 20, 40, 40... ms: about ten attempts in a third of a second, not thirty
+    // waits of 10, 20, 40, 40... ms: four attempts take at least the first three waits,
+    // however slow or fast the machine is
     let resolver = Resolver(failures: .max)
     let (browser, _) = makeBrowser(resolver)
+    let started = ContinuousClock.now
     await browser.handle(event())
-    try await Task.sleep(for: .milliseconds(330))
+    let deadline = started + .seconds(3)
+    while resolver.calls < 4, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(5))
+    }
     XCTAssertGreaterThanOrEqual(resolver.calls, 4)
-    XCTAssertLessThanOrEqual(resolver.calls, 12)
+    XCTAssertGreaterThanOrEqual(started.duration(to: .now), .milliseconds(70))
     await browser.reset()
   }
 
