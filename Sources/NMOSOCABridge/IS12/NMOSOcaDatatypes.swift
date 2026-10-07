@@ -107,68 +107,58 @@ final class NMOSOcaDatatypes {
   }
 
   private func derive(_ type: Any.Type) throws -> NMOSOcaSchema {
-    if let primitive = Self.primitives[ObjectIdentifier(type)] { return primitive }
-    if let optional = type as? any OptionalType.Type {
-      return try .optional(schema(of: optional.wrapped))
-    }
-    if let map = type as? any MapType.Type {
-      let key = try schema(of: map.key), value = try schema(of: map.value)
+    if let own = Self.ownSchemas[ObjectIdentifier(type)] { return own }
+    // a device object is written as its object number
+    if type is SwiftOCADevice.OcaRoot.Type { return .objectNumber }
+    switch OcaDatatypeKind(of: type) {
+    case let .base(name):
+      guard let base = Self.bases[name] else { throw NMOSOcaUnsupportedType(type, "no MS-05-02 type for \(name)") }
+      return base
+    case .blob:
+      return .blob
+    case let .optional(wrapped):
+      return try .optional(schema(of: wrapped))
+    case let .list(element):
+      return try .sequence(schema(of: element))
+    case let .map(key, value):
+      let key = try schema(of: key), value = try schema(of: value)
       let name = try name(for: type)
       try define(structure: name, fields: [("Key", key), ("Value", value)])
       return .map(name, key: key, value: value)
-    }
-    if let sequence = type as? any SequenceType.Type {
-      return try .sequence(schema(of: sequence.element))
-    }
-    if type is any Ocp1TypedBlobRepresentable.Type { return .blob }
-    // a device object is written as its object number
-    if type is SwiftOCADevice.OcaRoot.Type { return .objectNumber }
-    if let enumeration = type as? any (CaseIterable & RawRepresentable).Type,
-       let items = Self.items(of: enumeration)
-    {
+    case let .enumeration(cases):
+      // MS-05-02 enumerations are of 16-bit values; another is described by its raw values
+      let items = cases.compactMap { item in
+        UInt16(exactly: item.value).map { NcEnumItemDescriptor(name: item.name, value: $0) }
+      }
+      guard items.count == cases.count else {
+        // an enumeration is RawRepresentable, so this cast holds
+        let raw = type as! any RawRepresentable.Type
+        return try schema(of: Self.rawType(of: raw))
+      }
       let name = try name(for: type)
       descriptors.append(.init(name: name, kind: .enum(items: items)))
       return .enumeration(name)
+    case let .rawValue(raw):
+      return try schema(of: raw)
+    case .bounded, .structure:
+      // a structure is coded as its stored properties; one coded otherwise is a base type
+      // above, or has a field MS-05-02 cannot describe
+      let fields = Ocp2Encoder.fields(of: type)
+      guard !fields.isEmpty else {
+        throw NMOSOcaUnsupportedType(type, "not a structure of named fields")
+      }
+      let name = try name(for: type)
+      try define(structure: name, fields: fields.map { field in
+        try (Ocp2Encoder.fieldName(field.name), schema(of: field.type))
+      })
+      return .structure(name)
+    case .other:
+      throw NMOSOcaUnsupportedType(type, "not a datatype AES70 describes")
     }
-    if let raw = type as? any RawRepresentable.Type {
-      return try schema(of: Self.rawType(of: raw))
-    }
-    guard type is any Codable.Type else {
-      throw NMOSOcaUnsupportedType(type, "not Codable")
-    }
-
-    // a struct whose coding is synthesised is coded as its stored properties; one that
-    // codes otherwise is a primitive above, or has a field MS-05-02 cannot describe
-    let fields = Ocp2Encoder.fields(of: type)
-    guard !fields.isEmpty else {
-      throw NMOSOcaUnsupportedType(type, "not a struct of named fields")
-    }
-    let name = try name(for: type)
-    try define(structure: name, fields: fields.map { field in
-      try (Ocp2Encoder.fieldName(field.name), schema(of: field.type))
-    })
-    return .structure(name)
   }
 
-  private static let primitives: [ObjectIdentifier: NMOSOcaSchema] = [
-    ObjectIdentifier(Bool.self): .bool,
-    ObjectIdentifier(String.self): .string,
-    // MS-05-02 has no 8-bit integers
-    ObjectIdentifier(Int8.self): .integer("NcInt16"),
-    ObjectIdentifier(Int16.self): .integer("NcInt16"),
-    ObjectIdentifier(Int32.self): .integer("NcInt32"),
-    ObjectIdentifier(Int64.self): .integer("NcInt64"),
-    ObjectIdentifier(Int.self): .integer("NcInt64"),
-    ObjectIdentifier(UInt8.self): .integer("NcUint16"),
-    ObjectIdentifier(UInt16.self): .integer("NcUint16"),
-    ObjectIdentifier(UInt32.self): .integer("NcUint32"),
-    ObjectIdentifier(UInt64.self): .integer("NcUint64"),
-    ObjectIdentifier(UInt.self): .integer("NcUint64"),
-    ObjectIdentifier(Float.self): .float("NcFloat32"),
-    ObjectIdentifier(Double.self): .float("NcFloat64"),
-    ObjectIdentifier(Data.self): .blob,
-    ObjectIdentifier(OcaBlob.self): .blob,
-    ObjectIdentifier(OcaLongBlob.self): .blob,
+  /// AES70 types MS-05-02 describes in its own way, which AES70 codes by hand.
+  private static let ownSchemas: [ObjectIdentifier: NMOSOcaSchema] = [
     ObjectIdentifier(OcaPropertyID.self): .elementID,
     ObjectIdentifier(OcaMethodID.self): .elementID,
     ObjectIdentifier(OcaEventID.self): .elementID,
@@ -177,16 +167,15 @@ final class NMOSOcaDatatypes {
     ObjectIdentifier(OcaOrganizationID.self): .organizationID,
   ]
 
-  private static func items<E: CaseIterable & RawRepresentable>(of type: E.Type) -> [NcEnumItemDescriptor]? {
-    var items = [NcEnumItemDescriptor]()
-    for item in type.allCases {
-      guard let value = (item.rawValue as? any BinaryInteger).flatMap({ UInt16(exactly: $0) }) else {
-        return nil
-      }
-      items.append(.init(name: "\(item)", value: value))
-    }
-    return items.isEmpty ? nil : items
-  }
+  /// The MS-05-02 type of each AES70 base type. MS-05-02 has no 8-bit integers.
+  private static let bases: [String: NMOSOcaSchema] = [
+    "OcaBoolean": .bool, "OcaString": .string,
+    "OcaInt8": .integer("NcInt16"), "OcaInt16": .integer("NcInt16"),
+    "OcaInt32": .integer("NcInt32"), "OcaInt64": .integer("NcInt64"),
+    "OcaUint8": .integer("NcUint16"), "OcaUint16": .integer("NcUint16"),
+    "OcaUint32": .integer("NcUint32"), "OcaUint64": .integer("NcUint64"),
+    "OcaFloat32": .float("NcFloat32"), "OcaFloat64": .float("NcFloat64"),
+  ]
 
   private static func rawType<R: RawRepresentable>(of type: R.Type) -> Any.Type { R.RawValue.self }
 
@@ -446,37 +435,4 @@ extension NMOSJSONValue {
     case let .object(value): value.mapValues(\.ocp2)
     }
   }
-}
-
-// MARK: - Containers
-
-/// The standard library's containers, asked what they contain without a value of them.
-private protocol OptionalType {
-  static var wrapped: Any.Type { get }
-}
-
-extension Optional: OptionalType {
-  static var wrapped: Any.Type { Wrapped.self }
-}
-
-private protocol SequenceType {
-  static var element: Any.Type { get }
-}
-
-extension Array: SequenceType {
-  static var element: Any.Type { Element.self }
-}
-
-extension Set: SequenceType {
-  static var element: Any.Type { Element.self }
-}
-
-private protocol MapType {
-  static var key: Any.Type { get }
-  static var value: Any.Type { get }
-}
-
-extension Dictionary: MapType {
-  static var key: Any.Type { Key.self }
-  static var value: Any.Type { Value.self }
 }
