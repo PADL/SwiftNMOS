@@ -228,7 +228,7 @@ final class NMOSOcaControlClasses {
     ))
     // (a vector is listed once, under the ID of its x component)
     for property in ocaClass.properties where !consumed.contains(property.propertyID) {
-      present(property, of: ocaClass, at: level, into: &described)
+      present(property, at: level, into: &described)
     }
     presentMethods(of: ocaClass, at: level, under: anchor, into: &described)
     return described
@@ -237,7 +237,6 @@ final class NMOSOcaControlClasses {
   /// A property as one or, for a vector, two property descriptors and their bindings.
   private func present(
     _ property: OcaDevicePropertyDescriptor,
-    of ocaClass: OcaDeviceClassDescriptor,
     at level: UInt16,
     into described: inout ClassPresentation
   ) {

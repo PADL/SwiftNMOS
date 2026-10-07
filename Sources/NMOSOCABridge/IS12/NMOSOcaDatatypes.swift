@@ -47,14 +47,6 @@ indirect enum NMOSOcaSchema: Sendable, Hashable {
 }
 
 extension NMOSOcaSchema {
-  /// Whether a value of the schema is one plain value, which is never absent.
-  private var isPlain: Bool {
-    switch self {
-    case .bool, .integer, .float, .string, .enumeration, .objectNumber: true
-    default: false
-    }
-  }
-
   /// Whether a value of the schema is a number, which a range can constrain.
   var isNumber: Bool {
     switch self {

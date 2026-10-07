@@ -17,7 +17,6 @@
 import Foundation
 import Logging
 import NMOS
-import SwiftOCA
 import SwiftOCADevice
 
 /// What the host knows about itself that its OCA object model does not say.

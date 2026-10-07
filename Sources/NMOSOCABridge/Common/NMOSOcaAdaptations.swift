@@ -15,7 +15,6 @@
 //
 
 import Foundation
-import NMOS
 import SwiftOCA
 import SwiftOCADevice
 

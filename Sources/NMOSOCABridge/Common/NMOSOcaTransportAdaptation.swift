@@ -16,7 +16,6 @@
 
 import Foundation
 import NMOS
-import SwiftOCA
 import SwiftOCADevice
 
 /// What the bridge needs to know about one media transport (AES67, Dante, Milan) that
