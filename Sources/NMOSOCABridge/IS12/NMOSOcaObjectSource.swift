@@ -109,7 +109,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   private var registration: Task<Void, Never>?
   /// Each block's members' roles, with the members they were worked out for.
   private var roles = [OcaONo: (members: [OcaONo], roles: [OcaONo: String])]()
-  private nonisolated let listeners = Mutex([NcSession: AsyncStream<NcNotification>.Continuation]())
+  /// Each session's event stream, with an ID that tells it from a later one for the session.
+  private nonisolated let listeners = Mutex([NcSession: (id: UUID, continuation: AsyncStream<NcNotification>.Continuation)]())
 
   nonisolated init(
     device: OcaDevice,
@@ -583,7 +584,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// Lets go of what the device holds for the session's controller, as it does for any
   /// controller whose connection has gone, and has the device tell its delegate.
   public func sessionEnded(_ session: NcSession) async {
-    listeners.withLock { $0.removeValue(forKey: session) }?.finish()
+    listeners.withLock { $0.removeValue(forKey: session) }?.continuation.finish()
     guard let ended = sessions.removeValue(forKey: session) else { return }
     endpoint.remove(ended.controller)
     await device.expire(controller: ended.controller)
@@ -595,11 +596,12 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   public nonisolated func notifications(for session: NcSession) -> AsyncStream<NcNotification> {
     let (stream, continuation) = AsyncStream<NcNotification>.makeStream()
     // a session asked again has its events go to the new stream, and the old one ends
-    listeners.withLock { $0.updateValue(continuation, forKey: session) }?.finish()
+    let id = UUID()
+    listeners.withLock { $0.updateValue((id, continuation), forKey: session) }?.continuation.finish()
     continuation.onTermination = { [weak self] _ in
       self?.listeners.withLock { listeners in
         // only if it is still this stream's: a later one may have replaced it
-        if listeners[session].map({ $0 == continuation }) == true { listeners[session] = nil }
+        if listeners[session]?.id == id { listeners[session] = nil }
       }
     }
     return stream
@@ -662,7 +664,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     else { return }
     sessions[session]?.notified[oid, default: [:]][property] = value
     let eventData = NcPropertyChangedEventData(propertyID: property, value: value)
-    listeners.withLock { $0[session] }?.yield(NcNotification(oid: oid, eventData: eventData.json))
+    listeners.withLock { $0[session] }?.continuation.yield(NcNotification(oid: oid, eventData: eventData.json))
   }
 }
 
