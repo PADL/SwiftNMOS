@@ -83,11 +83,11 @@ public struct NMOSOcaControlMapping: Sendable {
   public var oids: [OcaONo: NcOid]
 
   /// The oid an OCA object is presented under.
-  public func oid(of objectNumber: OcaONo) -> NcOid { oids[objectNumber] ?? objectNumber }
+  public func oid(of objectNumber: OcaONo) -> NcOid { oids[objectNumber] ?? NcOid(objectNumber.rawValue) }
 
   /// The OCA object an oid stands for.
   public func objectNumber(of oid: NcOid) -> OcaONo {
-    oids.first { $0.value == oid }?.key ?? oid
+    oids.first { $0.value == oid }?.key ?? OcaONo(oid.rawValue)
   }
 
   /// The mapping of OCA as AES70 defines it: AES's OUI 00-0B-5E is the authority for the
@@ -123,6 +123,6 @@ public struct NMOSOcaControlMapping: Sendable {
     authorityKey: -0x000B5E,
     managersProperty: "managers",
     rootRole: "root",
-    oids: [OcaRootBlockONo: NcObjectModel<NMOSOcaObjectSource>.rootOid, OcaDeviceManagerONo: OcaRootBlockONo]
+    oids: [OcaRootBlockONo: NcObjectModel<NMOSOcaObjectSource>.rootOid, OcaDeviceManagerONo: NcOid(OcaRootBlockONo.rawValue)]
   )
 }

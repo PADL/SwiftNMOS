@@ -16,9 +16,6 @@
 
 import Foundation
 
-/// An MS-05-02 object ID; the root block is always 1.
-public typealias NcOid = UInt32
-
 /// Identifies a property, method or event within a class: the inheritance level of the
 /// class that defines it, and its index there (MS-05-02 `NcElementId`).
 public struct NcElementID: Codable, Sendable, Hashable, CustomStringConvertible {

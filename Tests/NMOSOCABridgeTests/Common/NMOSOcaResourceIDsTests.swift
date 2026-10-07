@@ -17,6 +17,7 @@
 import Foundation
 import NMOS
 import NMOSOCABridge
+import SwiftOCA
 import XCTest
 
 final class NMOSOcaResourceIDsTests: XCTestCase {
@@ -45,7 +46,7 @@ final class NMOSOcaResourceIDsTests: XCTestCase {
     let ids = NMOSOcaResourceIDs(seed: "seed")
     var seen: Set<NMOSID> = [ids.node, ids.device]
     for kind in [NMOSResourceKind.source, .flow, .sender, .receiver] {
-      for application: UInt32 in [0x1000F, 0x2000F] {
+      for application: OcaONo in [0x1000F, 0x2000F] {
         for endpoint: UInt32 in [1, 2, 1001] {
           let id = ids.id(kind, application: application, endpoint: endpoint)
           XCTAssertTrue(seen.insert(id).inserted, "\(kind) \(application) \(endpoint)")

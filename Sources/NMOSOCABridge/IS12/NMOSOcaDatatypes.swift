@@ -36,6 +36,8 @@ indirect enum NMOSOcaSchema: Sendable, Hashable {
   /// A property, method or event ID: `[level, index]`.
   case elementID
   case classID
+  /// An OCA object number, which is presented as the oid of the object it names.
+  case objectNumber
   case enumeration(String)
   case structure(String)
   case sequence(NMOSOcaSchema)
@@ -48,7 +50,7 @@ extension NMOSOcaSchema {
   /// Whether a value of the schema is one plain value, which is never absent.
   var isPlain: Bool {
     switch self {
-    case .bool, .integer, .float, .string, .enumeration: true
+    case .bool, .integer, .float, .string, .enumeration, .objectNumber: true
     default: false
     }
   }
@@ -89,8 +91,12 @@ final class NMOSOcaDatatypes {
   private var fields = [String: [(name: String, schema: NMOSOcaSchema)]]()
   /// The descriptors of every datatype met so far, in the order they were met.
   private(set) var descriptors = [NcDatatypeDescriptor]()
+  /// Which oid each object number is presented as.
+  private let mapping: NMOSOcaControlMapping
 
-  nonisolated init() {}
+  nonisolated init(mapping: NMOSOcaControlMapping = .standard) {
+    self.mapping = mapping
+  }
 
   // MARK: - Schemas
 
@@ -124,7 +130,7 @@ final class NMOSOcaDatatypes {
     }
     if type is any Ocp1TypedBlobRepresentable.Type { return .blob }
     // a device object is written as its object number
-    if type is SwiftOCADevice.OcaRoot.Type { return .integer("NcUint32") }
+    if type is SwiftOCADevice.OcaRoot.Type { return .objectNumber }
     if let enumeration = type as? any (CaseIterable & RawRepresentable).Type,
        let items = Self.items(of: enumeration)
     {
@@ -175,6 +181,7 @@ final class NMOSOcaDatatypes {
     ObjectIdentifier(OcaMethodID.self): .elementID,
     ObjectIdentifier(OcaEventID.self): .elementID,
     ObjectIdentifier(OcaClassID.self): .classID,
+    ObjectIdentifier(OcaONo.self): .objectNumber,
     ObjectIdentifier(OcaOrganizationID.self): .organizationID,
   ]
 
@@ -259,6 +266,7 @@ final class NMOSOcaDatatypes {
     case .organizationID: return .init(typeName: typedef("OcaOrganizationID", of: "NcString"))
     case .elementID: return .init(typeName: typedef("OcaElementID", of: "NcUint16", isSequence: true))
     case .classID: return .init(typeName: typedef("OcaClassID", of: "NcUint16", isSequence: true))
+    case .objectNumber: return .init(typeName: "NcOid")
     case let .enumeration(name), let .structure(name): return .init(typeName: name)
     case let .map(name, _, _): return .init(typeName: name, isSequence: true)
     case let .optional(wrapped):
@@ -293,6 +301,9 @@ final class NMOSOcaDatatypes {
     case .integer, .enumeration:
       guard let value = oca.integerValue else { throw mismatch() }
       return .integer(value)
+    case .objectNumber:
+      guard let value = oca.integerValue.flatMap(OcaONo.init(exactly:)) else { throw mismatch() }
+      return .integer(Int64(mapping.oid(of: value)))
     case let .float(name):
       if let value = oca.doubleValue { return .number(value) }
       // OCP.2 writes what JSON has no number for as text; MS-05-02 has only numbers
@@ -348,6 +359,9 @@ final class NMOSOcaDatatypes {
       guard standard.boolValue != nil else { throw mismatch() }
     case .integer, .enumeration:
       guard standard.integerValue != nil else { throw mismatch() }
+    case .objectNumber:
+      guard let oid = standard.integerValue.flatMap(NcOid.init(exactly:)) else { throw mismatch() }
+      return .integer(Int64(mapping.objectNumber(of: oid)))
     case .float:
       guard standard.doubleValue != nil else { throw mismatch() }
     case .string, .blob, .organizationID:

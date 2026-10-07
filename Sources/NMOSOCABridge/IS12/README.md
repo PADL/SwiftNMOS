@@ -117,9 +117,10 @@ Decisions:
 - A property is read only exactly when it has no setter. One with a setter is described
   as writable, and the device may still refuse a `Set`: its `PermissionDenied` is the
   session's `Unauthorized`, and `NotImplemented` its `Readonly`.
-- `OcaONo`-typed parameters and results are presented as the raw AES70 object numbers,
-  as `OcaONo` properties already are; an oid differs only for the root block and the
-  device manager.
+- An object number anywhere in a value (a property, a datatype's field, a method's
+  parameter or result), being an `OcaONo` or an object, is presented as `NcOid` and is
+  the oid of the object it names, both ways: the mapping renumbers the root block and the
+  device manager, and an object number in a value is renumbered with them.
 - A method whose parameters the device cannot describe (OcaDeviceManager's raw
   `SetResetKey`) cannot be presented honestly, and is left out, as its descriptor says.
 

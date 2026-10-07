@@ -247,6 +247,9 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     return try XCTUnwrap(result.value, "no class \(classID): \(result.errorMessage ?? "")")
   }
 
+  /// The oid of an object the mapping does not renumber, which is its object number.
+  private func oid(_ objectNumber: OcaONo) -> NcOid { NcOid(objectNumber.rawValue) }
+
   @OcaDevice
   private func classID(of oid: NcOid) async throws -> NcClassID {
     let result = await get(oid, 1, 1)
@@ -318,7 +321,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     XCTAssertGreaterThan(visited, 5)
 
     // two objects with one OCA role, and a role with a dot in it
-    let roles = await members(of: Fixture.block.objectNumber).compactMap { $0["role"]?.stringValue }
+    let roles = await members(of: oid(Fixture.block.objectNumber)).compactMap { $0["role"]?.stringValue }
     XCTAssertEqual(
       roles.prefix(6), ["Gain", "Gain_\(Fixture.trimmed.objectNumber)", "Identify_Now", "Fixed", "Locked", "LocalOnly"]
     )
@@ -328,7 +331,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
 
   @OcaDevice
   func testAnOcaClassIsDerivedFromTheStandardClassItCorrespondsTo() async throws {
-    let gain = Fixture.gain.objectNumber
+    let gain = oid(Fixture.gain.objectNumber)
     let aes = Fixture.aes
     let classID = await get(gain, 1, 1)
     // NcWorker, the key of AES whose class it is, then OCA's 1.1.1.5 below its root
@@ -361,7 +364,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   @OcaDevice
   func testAnOcaProprietaryClassKeepsItsAuthority() async throws {
     let (aes, padl) = (Fixture.aes, Fixture.padl)
-    let classID = await get(Fixture.trimmed.objectNumber, 1, 1)
+    let classID = await get(oid(Fixture.trimmed.objectNumber), 1, 1)
     XCTAssertEqual(classID.value, [1, 2, .integer(Int64(aes)), 1, 1, 5, .integer(Int64(padl)), 1])
     let descriptor = try await classDescriptor([1, 2, aes, 1, 1, 5, padl, 1])
     XCTAssertEqual(descriptor["name"], "TrimmedGain")
@@ -387,7 +390,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
       role: "Toggle", deviceDelegate: OcaDevice.shared, addToRootBlock: false
     )
     try await Fixture.block.add(actionObject: toggle)
-    let classID = await get(toggle.objectNumber, 1, 1)
+    let classID = await get(oid(toggle.objectNumber), 1, 1)
     XCTAssertEqual(classID.value, [1, 2, .integer(Int64(aes)), 1, 1, 1, 1])
 
     let unstated = try await classDescriptor([1, 2, aes, 1, 1, 1])
@@ -398,7 +401,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     XCTAssertEqual(own["properties"], [NcPropertyDescriptor(
       id: .init(level: 6, index: 1), name: "setting", typeName: "NcBoolean", isReadOnly: false
     ).json])
-    let setting = await get(toggle.objectNumber, 6, 1)
+    let setting = await get(oid(toggle.objectNumber), 6, 1)
     XCTAssertEqual(setting.value, false)
 
     XCTAssertEqual(OcaClassID("1.1.1.1.1").classIDs(after: "1.1.1"), ["1.1.1.1"])
@@ -426,7 +429,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
 
   @OcaDevice
   func testIdentificationIsTheStandardBeacon() async throws {
-    let identify = Fixture.identify.objectNumber
+    let identify = oid(Fixture.identify.objectNumber)
     let classID = try await classID(of: identify)
     XCTAssertTrue(classID.starts(with: NcStandardModel.identBeacon))
     let before = await get(identify, 3, 1)
@@ -443,7 +446,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
 
   @OcaDevice
   func testGetAndSetReachTheOcaProperty() async throws {
-    let gain = Fixture.gain.objectNumber
+    let gain = oid(Fixture.gain.objectNumber)
     let written = await set(gain, 5, 1, -6.5)
     XCTAssertEqual(written.status, .ok)
     XCTAssertEqual(Fixture.gain.gain.value, -6.5)
@@ -458,14 +461,14 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let statuses = await [
       set(gain, 5, 1, "loud").status, get(gain, 5, 9).status, set(gain, 5, 9, 1).status,
       // a property declared without a setter
-      set(Fixture.trimmed.objectNumber, 6, 3, "x").status,
+      set(oid(Fixture.trimmed.objectNumber), 6, 3, "x").status,
     ]
     XCTAssertEqual(statuses, [.parameterError, .propertyNotImplemented, .propertyNotImplemented, .readonly])
   }
 
   @OcaDevice
   func testValuesMS0502CannotDescribeAreReshaped() async throws {
-    let trimmed = Fixture.trimmed.objectNumber
+    let trimmed = oid(Fixture.trimmed.objectNumber)
     Fixture.trimmed.routing = [1: [OcaPortID(mode: .input, index: 2)]]
     let routing = await get(trimmed, 6, 2)
     XCTAssertEqual(routing.value, [["Key": 1, "Value": [["Mode": 1, "Index": 2]]]])
@@ -492,9 +495,9 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     sealed.label = "Private"
     try await Fixture.block.add(actionObject: sealed)
     // the label is the OCA label, which the device refuses to read but lets be written
-    let refused = await get(sealed.objectNumber, 1, 6)
+    let refused = await get(oid(sealed.objectNumber), 1, 6)
     XCTAssertEqual(refused.status, .unauthorized)
-    let written = await set(sealed.objectNumber, 1, 6, "Mine")
+    let written = await set(oid(sealed.objectNumber), 1, 6, "Mine")
     XCTAssertEqual(written.status, .ok)
     XCTAssertEqual(sealed.label, "Mine")
   }
@@ -515,18 +518,18 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     XCTAssertEqual(properties.map { $0["isReadOnly"] }, [false, false])
 
     // the device refuses one, when it is set
-    let refused = await set(fixed.objectNumber, 5, 2, 0.0)
+    let refused = await set(oid(fixed.objectNumber), 5, 2, 0.0)
     XCTAssertEqual(refused.status, .readonly)
-    let moved = await set(fixed.objectNumber, 5, 1, 0.5)
+    let moved = await set(oid(fixed.objectNumber), 5, 1, 0.5)
     XCTAssertEqual(moved.status, .ok)
     XCTAssertEqual(fixed.position.value, 0.5)
-    let allowed = await set(plain.objectNumber, 5, 2, 0.0)
+    let allowed = await set(oid(plain.objectNumber), 5, 2, 0.0)
     XCTAssertEqual(allowed.status, .ok)
   }
 
   @OcaDevice
   func testTheRangeOfABoundedPropertyIsARuntimeConstraint() async throws {
-    let gain = Fixture.gain.objectNumber
+    let gain = oid(Fixture.gain.objectNumber)
     Fixture.gain.gain = OcaBoundedPropertyValue(value: 0, in: -60...12)
     let constraints = await get(gain, 1, 8)
     XCTAssertEqual(constraints.value, [
@@ -547,13 +550,13 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     Fixture.gain.gain = OcaBoundedPropertyValue(value: 0, in: -144...20)
 
     // an object with no bounded property has no constraints
-    let none = await get(Fixture.identify.objectNumber, 1, 8)
+    let none = await get(oid(Fixture.identify.objectNumber), 1, 8)
     XCTAssertEqual(none, NcMethodResult(value: .null))
   }
 
   @OcaDevice
   func testTheUserLabelIsTheOcaLabelWhereThereIsOne() async throws {
-    let gain = Fixture.gain.objectNumber
+    let gain = oid(Fixture.gain.objectNumber)
     let written = await set(gain, 1, 6, "Left")
     XCTAssertEqual(written.status, .ok)
     XCTAssertEqual(Fixture.gain.label, "Left")
@@ -577,14 +580,14 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     _ = await set(manager, 1, 6, .null)
 
     // but an object whose device refuses to change its OCA label keeps it
-    let fixed = Fixture.fixed.objectNumber
+    let fixed = oid(Fixture.fixed.objectNumber)
     let renamed = await set(fixed, 1, 6, "Mine")
     XCTAssertEqual(renamed.status, .unauthorized)
     let factory = await get(fixed, 1, 6)
     XCTAssertEqual(factory.value, "Factory")
 
     // but a lock is the session's error, and leaves the label as it is
-    let locked = Fixture.locked.objectNumber
+    let locked = oid(Fixture.locked.objectNumber)
     let refused = await set(locked, 1, 6, "Mine")
     XCTAssertEqual(refused.status, .locked)
     XCTAssertEqual(Fixture.locked.label, "Held")
@@ -706,7 +709,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
 
   @OcaDevice
   func testASessionIsTheControllerItsPeerIsAndNeverTheBridge() async throws {
-    let agent = Fixture.localOnly.objectNumber
+    let agent = oid(Fixture.localOnly.objectNumber)
     let (aes, padl) = (Fixture.aes, Fixture.padl)
     // what only a local controller may read is presented, and the device refuses it
     let descriptor = try await classDescriptor([1, aes, 2, padl, 9])
@@ -749,7 +752,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
 
   @OcaDevice
   func testEachSessionIsAControllerOfItsOwn() async throws {
-    let gain = Fixture.gain.objectNumber
+    let gain = oid(Fixture.gain.objectNumber)
     let other = NcSession(peer: .ip("192.0.2.20", port: 50000))
     _ = await get(gain, 5, 1)
     _ = await get(gain, 5, 1, as: other)
@@ -760,7 +763,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     XCTAssertTrue(listed.contains { $0 === mine } && listed.contains { $0 === theirs })
 
     // a lock one session's controller takes binds the other session, and not itself
-    let lock = Ocp1Command(targetONo: gain, methodID: OcaMethodID("1.3"))
+    let lock = Ocp1Command(targetONo: Fixture.gain.objectNumber, methodID: OcaMethodID("1.3"))
     let locked = await OcaDevice.shared.handleCommand(lock, from: mine)
     XCTAssertEqual(locked.statusCode, .ok)
     let blocked = await get(gain, 5, 1, as: other)
@@ -773,13 +776,13 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     // each hears of the objects it subscribed to, and of no others
     let myEvents = model.notifications(for: session), theirEvents = model.notifications(for: other)
     await model.subscriptionsChanged(to: [gain], session: session)
-    await model.subscriptionsChanged(to: [Fixture.trimmed.objectNumber], session: other)
+    await model.subscriptionsChanged(to: [oid(Fixture.trimmed.objectNumber)], session: other)
     _ = await set(gain, 5, 1, -42)
     let heard = await next(myEvents)
     XCTAssertEqual(heard?.eventData["value"], -42.0)
-    _ = await set(Fixture.trimmed.objectNumber, 6, 1, 4)
+    _ = await set(oid(Fixture.trimmed.objectNumber), 6, 1, 4)
     let overheard = await next(theirEvents)
-    XCTAssertEqual(overheard?.oid, Fixture.trimmed.objectNumber)
+    XCTAssertEqual(overheard?.oid, oid(Fixture.trimmed.objectNumber))
 
     // the session's end releases its lock, as a controller's disconnecting does
     await model.sessionEnded(session)
@@ -790,14 +793,14 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
 
   @OcaDevice
   func testEndingASessionRemovesItsController() async throws {
-    let gain = Fixture.gain.objectNumber
+    let gain = oid(Fixture.gain.objectNumber)
     let ending = NcSession(peer: .ip("192.0.2.30", port: 50000))
     let events = model.notifications(for: ending)
     await model.subscriptionsChanged(to: [gain], session: ending)
     let controller = try XCTUnwrap(model.source.controller(of: ending))
     let manager = await OcaDevice.shared.subscriptionManager
     let subscriptionManager = try XCTUnwrap(manager)
-    XCTAssertTrue(subscriptionManager.isSubscribed(controller, toEventsFrom: gain))
+    XCTAssertTrue(subscriptionManager.isSubscribed(controller, toEventsFrom: Fixture.gain.objectNumber))
     let before = await model.source.endpoint.controllers
     XCTAssertTrue(before.contains { $0 === controller })
 
@@ -820,7 +823,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let delegate = ExpiryDelegate()
     await OcaDevice.shared.setEventDelegate(delegate)
     let ending = NcSession(peer: .ip("192.0.2.40", port: 50000))
-    await model.subscriptionsChanged(to: [Fixture.gain.objectNumber], session: ending)
+    await model.subscriptionsChanged(to: [oid(Fixture.gain.objectNumber)], session: ending)
     let controller = try XCTUnwrap(model.source.controller(of: ending))
     XCTAssertFalse(delegate.hasExpired(controller))
 
@@ -860,7 +863,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let descriptor = try await classDescriptor(late)
     XCTAssertEqual(descriptor["name"], "LateActuator")
     XCTAssertEqual(descriptor["properties"]?.arrayValue?.first?["name"], "depth")
-    let classID = try await classID(of: object.objectNumber)
+    let classID = try await classID(of: oid(object.objectNumber))
     XCTAssertEqual(classID, late)
     let unchanged = try await classDescriptor(gain, inherited: true)
     XCTAssertEqual(unchanged, first)
@@ -875,22 +878,22 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let added = try await SwiftOCADevice.OcaGain(
       role: "Added-\(UUID().uuidString)", deviceDelegate: OcaDevice.shared, addToRootBlock: false
     )
-    let unowned = await get(added.objectNumber, 1, 2)
+    let unowned = await get(oid(added.objectNumber), 1, 2)
     XCTAssertEqual(unowned.status, .badOid)
     try await Fixture.block.add(actionObject: added)
-    let found = await get(added.objectNumber, 1, 2)
+    let found = await get(oid(added.objectNumber), 1, 2)
     XCTAssertEqual(found.value, .integer(Int64(added.objectNumber)))
-    let block = await model.source.identity(of: Fixture.block.objectNumber)
+    let block = await model.source.identity(of: oid(Fixture.block.objectNumber))
     let members = try await model.source.members(of: XCTUnwrap(block)).map(\.oid)
-    XCTAssertTrue(members.contains(added.objectNumber))
+    XCTAssertTrue(members.contains(oid(added.objectNumber)))
     try await Fixture.block.delete(actionObject: added)
-    let removed = await get(added.objectNumber, 1, 2)
+    let removed = await get(oid(added.objectNumber), 1, 2)
     XCTAssertEqual(removed.status, .badOid)
   }
 
   @OcaDevice
   func testAVectorIsItsTwoComponents() async throws {
-    let trimmed = Fixture.trimmed.objectNumber
+    let trimmed = oid(Fixture.trimmed.objectNumber)
     let descriptor = try await classDescriptor([1, 2, Fixture.aes, 1, 1, 5, Fixture.padl, 1])
     let components = descriptor["properties"]?.arrayValue?.suffix(2).map { $0["typeName"] }
     XCTAssertEqual(components, ["NcUint16", "NcUint16"])
@@ -926,7 +929,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
 
   @OcaDevice
   func testAChangeInTheDeviceIsNotifiedToSubscribedObjectsOnly() async throws {
-    let gain = Fixture.gain.objectNumber, trimmed = Fixture.trimmed.objectNumber
+    let gain = oid(Fixture.gain.objectNumber), trimmed = oid(Fixture.trimmed.objectNumber)
     let notifications = model.notifications(for: session)
     await model.subscriptionsChanged(to: [gain], session: session)
 
@@ -1027,7 +1030,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     XCTAssertEqual(root.value, [NcTouchpoint(resourceType: "device", id: Fixture.ids.device).json])
     let deviceManager = await get(NcOid(OcaRootBlockONo), 1, 7)
     XCTAssertEqual(deviceManager.value, [NcTouchpoint(resourceType: "node", id: Fixture.ids.node).json])
-    let gain = await get(Fixture.gain.objectNumber, 1, 7)
+    let gain = await get(oid(Fixture.gain.objectNumber), 1, 7)
     XCTAssertEqual(gain.value, .null)
   }
 
@@ -1112,6 +1115,19 @@ final class NMOSOcaDatatypesTests: XCTestCase {
 
     XCTAssertThrowsError(try datatypes.standard(from: ["Name": 1], as: .structure("Record")))
     XCTAssertThrowsError(try datatypes.oca(from: "x", as: .integer("NcInt32")))
+
+    // an object number in a value is the oid of the object it names, both ways
+    let objectNumber = try datatypes.schema(of: OcaONo.self)
+    XCTAssertEqual(try datatypes.reference(to: objectNumber).typeName, "NcOid")
+    XCTAssertEqual(try datatypes.standard(from: .integer(Int64(OcaRootBlockONo)), as: objectNumber), 1)
+    XCTAssertEqual(try datatypes.standard(from: 1, as: objectNumber), .integer(Int64(OcaRootBlockONo)))
+    XCTAssertEqual(try datatypes.standard(from: 4096, as: objectNumber), 4096)
+    XCTAssertEqual(try datatypes.oca(from: 1, as: objectNumber), .integer(Int64(OcaRootBlockONo)))
+    let port = try datatypes.standard(
+      from: NMOSJSONValue(ocp2: Ocp2Encoder().encodeValue(OcaPort(owner: OcaRootBlockONo, id: .init(mode: .input, index: 1), name: "In"))),
+      as: datatypes.schema(of: OcaPort.self)
+    )
+    XCTAssertEqual(port["Owner"], 1)
 
     // a proprietary class ID read is one that can be written back
     let classID = TrimmedGain.classID

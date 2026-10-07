@@ -70,7 +70,7 @@ struct NMOSOcaControlClass: Sendable {
 @OcaDevice
 final class NMOSOcaControlClasses {
   let mapping: NMOSOcaControlMapping
-  let datatypes = NMOSOcaDatatypes()
+  let datatypes: NMOSOcaDatatypes
   private let logger: Logger
   private var classes = [ObjectIdentifier: NMOSOcaControlClass]()
   /// Every non-standard class of the objects met so far, each once, made again when a
@@ -80,6 +80,7 @@ final class NMOSOcaControlClasses {
   nonisolated init(mapping: NMOSOcaControlMapping, logger: Logger) {
     self.mapping = mapping
     self.logger = logger
+    datatypes = NMOSOcaDatatypes(mapping: mapping)
   }
 
   /// Each class once: where descriptors share a class ID, as a class named only by another's
