@@ -560,11 +560,14 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let cleared = await set(gain, 1, 6, .null)
     XCTAssertEqual(cleared.status, .ok)
     XCTAssertEqual(Fixture.gain.label, "")
+    // no label is an empty one
+    let none = await get(gain, 1, 6)
+    XCTAssertEqual(none, NcMethodResult(value: ""))
 
     // a manager has no label in OCA, so the label store keeps one for it
     let manager = NcOid(OcaNetworkManagerONo)
     let before = await get(manager, 1, 6)
-    XCTAssertEqual(before, NcMethodResult(value: .null))
+    XCTAssertEqual(before, NcMethodResult(value: ""))
     let named = await set(manager, 1, 6, "Networks")
     XCTAssertEqual(named.status, .ok)
     let after = await get(manager, 1, 6)
@@ -952,6 +955,59 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     await model.subscriptionsChanged(to: [], session: session)
   }
 
+  /// The first notification `matching` within two seconds.
+  @OcaDevice
+  private func first(
+    _ notifications: AsyncStream<NcNotification>,
+    matching: @escaping @Sendable (NcNotification) -> Bool
+  ) async -> NcNotification? {
+    await withTaskGroup(of: NcNotification?.self) { group in
+      group.addTask {
+        for await notification in notifications where matching(notification) { return notification }
+        return nil
+      }
+      group.addTask {
+        try? await Task.sleep(for: .seconds(2))
+        return nil
+      }
+      let found = await group.next() ?? nil
+      group.cancelAll()
+      return found
+    }
+  }
+
+  @OcaDevice
+  func testAChangeToABlocksMembersIsNotifiedWithThem() async throws {
+    let block = NcOid(Fixture.block.objectNumber)
+    let notifications = model.notifications(for: session)
+    await model.subscriptionsChanged(to: [block], session: session)
+    let added = try await SwiftOCADevice.OcaGain(
+      role: "Notified-\(UUID().uuidString)", deviceDelegate: OcaDevice.shared, addToRootBlock: false
+    )
+    try await Fixture.block.add(actionObject: added)
+    let notification = await first(notifications) { $0.oid == block }
+    XCTAssertEqual(notification?.eventData["propertyId"], NcElementID.members.json)
+    let oids = notification?.eventData["value"]?.arrayValue?.compactMap { $0["oid"]?.integerValue }
+    XCTAssertTrue(oids?.contains(Int64(added.objectNumber)) == true, "\(String(describing: notification))")
+    try await Fixture.block.delete(actionObject: added)
+    await model.subscriptionsChanged(to: [], session: session)
+  }
+
+  @OcaDevice
+  func testARangeThatChangesAloneIsNotifiedInTheRuntimeConstraints() async throws {
+    let gain = NcOid(Fixture.gain.objectNumber)
+    Fixture.gain.gain = OcaBoundedPropertyValue(value: 0, in: -144...20)
+    let notifications = model.notifications(for: session)
+    await model.subscriptionsChanged(to: [gain], session: session)
+    Fixture.gain.gain = OcaBoundedPropertyValue(value: 0, in: -60...12)
+    let notification = await first(notifications) {
+      $0.oid == gain && $0.eventData["propertyId"] == NcElementID.runtimePropertyConstraints.json
+    }
+    XCTAssertEqual(notification?.eventData["value"]?.arrayValue?.first?["maximum"], .number(12))
+    Fixture.gain.gain = OcaBoundedPropertyValue(value: 0, in: -144...20)
+    await model.subscriptionsChanged(to: [], session: session)
+  }
+
   @OcaDevice
   func testALabelTheStoreKeepsIsNotifiedToo() async throws {
     let manager = NcOid(OcaNetworkManagerONo)
@@ -1056,6 +1112,12 @@ final class NMOSOcaDatatypesTests: XCTestCase {
 
     XCTAssertThrowsError(try datatypes.standard(from: ["Name": 1], as: .structure("Record")))
     XCTAssertThrowsError(try datatypes.oca(from: "x", as: .integer("NcInt32")))
+
+    // a proprietary class ID read is one that can be written back
+    let classID = TrimmedGain.classID
+    let read = try datatypes.standard(from: NMOSJSONValue(ocp2: Ocp2Encoder().encodeValue(classID)), as: .classID)
+    let written = try datatypes.oca(from: read, as: .classID)
+    XCTAssertEqual(try Ocp2Decoder().decodeValue(OcaClassID.self, from: written.ocp2), classID)
   }
 
   @OcaDevice

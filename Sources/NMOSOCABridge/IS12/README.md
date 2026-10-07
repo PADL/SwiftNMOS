@@ -139,9 +139,11 @@ notifier's are not.
 A session subscribed to an object has its controller subscribed to each of the object's
 presented properties (`AddPropertyChangeSubscription2`, in effect) rather than to all of
 its property changes. The device then does not encode, or send the bridge, a change to
-anything not presented. With no session
-subscribed to an object, the bridge hears nothing from it, unless it is a block or the
-device manager, whose changes to the tree the bridge observes for itself. Counter agents
+anything not presented. With no session subscribed to an object, the bridge hears nothing
+from it. A block's members are subscribed to as well: the bridge notifies the change, and
+`NcObjectModel` gives the notification the members' descriptors. A bounded property's
+change is also a change to the object's `runtimePropertyConstraints`, which is notified
+when the range it holds is different. Counter agents
 and counter notifiers are presented like any agent: what they hold may be read, which
 leaves nothing of them hollow.
 
@@ -156,7 +158,8 @@ MS-05-02 has every object's `userLabel` writable. Where the object has an OCA `l
 controller can set, the label is that property, written as the session's controller: a
 lock, the device's refusal, or any other failure is the session's error. An object
 without one (a manager, the class manager) has its label kept in an `NMOSOcaLabelStore`
-instead, by object number. MS-05-02 also requires that a label persist across a restart: the default store,
+instead, by object number. No label is an empty one, in either place, as an OCA object's
+is. MS-05-02 also requires that a label persist across a restart: the default store,
 `NMOSOcaMemoryLabelStore`, keeps labels only while the process runs, and a host that
 can persist them passes a store of its own to `NMOSOcaDeviceModel`.
 

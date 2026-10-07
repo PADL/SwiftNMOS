@@ -86,8 +86,9 @@ public protocol NcObjectSource: Sendable {
   func handleCommand(_ command: NcCommand, on object: Identity, session: NcSession) async -> NcMethodResult
 
   /// The classes and datatypes of the objects that are not standard ones. The class
-  /// manager asks for them at every lookup, so a source should keep the lists it
-  /// returns until they change rather than make them each time.
+  /// manager asks for them at every lookup, the classes first and then the datatypes, so
+  /// a source should keep the lists it returns until they change rather than make them
+  /// each time.
   func classes() async -> [NcClassDescriptor]
   func datatypes() async -> [NcDatatypeDescriptor]
 
@@ -163,9 +164,28 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
     return existing
   }
 
-  /// The source's events for the session; the source ends them when the session ends.
+  /// The source's events for the session, which the source ends when the session ends;
+  /// a change to a block's members is given the members' descriptors here.
   public func notifications(for session: NcSession) -> AsyncStream<NcNotification> {
-    source.notifications(for: session)
+    let upstream = source.notifications(for: session)
+    return AsyncStream { continuation in
+      let task = Task {
+        for await notification in upstream {
+          await continuation.yield(self.completed(notification, session))
+        }
+        continuation.finish()
+      }
+      continuation.onTermination = { _ in task.cancel() }
+    }
+  }
+
+  private func completed(_ notification: NcNotification, _ session: NcSession) async -> NcNotification {
+    guard notification.eventData["propertyId"] == NcElementID.members.json,
+          let identity = await source.identity(of: notification.oid)
+    else { return notification }
+    let members = await object(identity).get(.members, session)
+    let eventData = NcPropertyChangedEventData(propertyID: .members, value: members.value ?? .null)
+    return NcNotification(oid: notification.oid, eventData: eventData.json)
   }
 
   public func subscriptionsChanged(to oids: Set<NcOid>, session: NcSession) async {
@@ -180,6 +200,11 @@ public final class NcObjectModel<Source: NcObjectSource>: NcDeviceModel {
 public extension NcElementID {
   /// `NcObject.userLabel`, the one property of `NcObject` a controller can write.
   static let userLabel = Self(level: 1, index: 6)
+  /// `NcObject.runtimePropertyConstraints`.
+  static let runtimePropertyConstraints = Self(level: 1, index: 8)
+  /// `NcBlock.members`, whose change a source notifies without a value: the model has
+  /// the members' descriptors, and gives them to the notification.
+  static let members = Self(level: 2, index: 2)
 }
 
 /// The descriptors a class manager answers with, each put together once and shared by
@@ -194,29 +219,37 @@ final class NcDescriptorCache: Sendable {
     let json: NMOSJSONValue
   }
 
-  /// Both lists as their properties return them, and what they were made from.
+  /// Both lists as their properties return them, and what they were made from. Each
+  /// time the lists are made again they have a generation of their own.
   struct Lists: Sendable {
+    let generation: UInt64
     let sourceClasses: [NcClassDescriptor]
     let sourceDatatypes: [NcDatatypeDescriptor]
     let classes: NMOSJSONValue
     let datatypes: NMOSJSONValue
   }
 
-  // The entries are built from the source's lists, so they go when the lists change:
-  // a source may describe a class more fully once it has an object of it.
-  private let _cache = Mutex([Key: Entry]())
-  private let _lists = Mutex<Lists?>(nil)
-
-  func entry(for key: Key) -> Entry? {
-    _cache.withLock { $0[key] }
+  private struct State {
+    var lists: Lists?
+    var entries = [Key: Entry]()
   }
 
-  /// Stores an entry built outside the lock. Two callers that built the same entry at
-  /// once built the same thing, and the first stored is the one both keep.
-  func keep(_ entry: Entry, for key: Key) -> Entry {
-    _cache.withLock { cache in
-      if let existing = cache[key] { return existing }
-      cache[key] = entry
+  // The entries are built from the source's lists, so they go when the lists change:
+  // a source may describe a class more fully once it has an object of it. An entry built
+  // from lists that have since been made again is not kept.
+  private let state = Mutex(State())
+
+  func entry(for key: Key, in lists: Lists) -> Entry? {
+    state.withLock { $0.lists?.generation == lists.generation ? $0.entries[key] : nil }
+  }
+
+  /// Stores an entry built outside the lock from `lists`. Two callers that built the same
+  /// entry at once built the same thing, and the first stored is the one both keep.
+  func keep(_ entry: Entry, for key: Key, in lists: Lists) -> Entry {
+    state.withLock { state in
+      guard state.lists?.generation == lists.generation else { return entry }
+      if let existing = state.entries[key] { return existing }
+      state.entries[key] = entry
       return entry
     }
   }
@@ -224,18 +257,21 @@ final class NcDescriptorCache: Sendable {
   /// The lists for what the source now has. A source that keeps its lists until they
   /// change hands back the same arrays, which compare without being read.
   func lists(classes: [NcClassDescriptor], datatypes: [NcDatatypeDescriptor]) -> Lists {
-    if let lists = _lists.withLock({ $0 }), lists.sourceClasses == classes, lists.sourceDatatypes == datatypes {
+    state.withLock { state in
+      if let lists = state.lists, lists.sourceClasses == classes, lists.sourceDatatypes == datatypes {
+        return lists
+      }
+      let lists = Lists(
+        generation: (state.lists?.generation ?? 0) &+ 1,
+        sourceClasses: classes,
+        sourceDatatypes: datatypes,
+        classes: .array((NcStandardModel.classes + classes).map(\.json)),
+        datatypes: .array((NcStandardModel.datatypes + datatypes).map(\.json))
+      )
+      state.lists = lists
+      state.entries.removeAll()
       return lists
     }
-    let lists = Lists(
-      sourceClasses: classes,
-      sourceDatatypes: datatypes,
-      classes: .array((NcStandardModel.classes + classes).map(\.json)),
-      datatypes: .array((NcStandardModel.datatypes + datatypes).map(\.json))
-    )
-    _lists.withLock { $0 = lists }
-    _cache.withLock { $0.removeAll() }
-    return lists
   }
 }
 

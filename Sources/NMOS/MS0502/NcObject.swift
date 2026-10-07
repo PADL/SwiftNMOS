@@ -106,8 +106,10 @@ class NcObject<Source: NcObjectSource> {
   ) async throws -> NcMethodResult {
     let current = await get(property, session)
     guard !current.status.isError else { return current }
-    guard let value = current.value, value.isNull || value.arrayValue != nil else {
-      return .error(.invalidRequest, "Property \(property.level)p\(property.index) is not a sequence")
+    // a null is a sequence's only where the property is declared one
+    guard let value = current.value else { return Self.notASequence(property) }
+    if value.arrayValue == nil {
+      guard value.isNull, await isSequence(property) else { return Self.notASequence(property) }
     }
     var items = value.arrayValue ?? []
 
@@ -153,6 +155,23 @@ class NcObject<Source: NcObjectSource> {
     }
   }
 
+  /// Whether a class in the object's lineage declares the property a sequence.
+  private func isSequence(_ property: NcElementID) async -> Bool {
+    let classes = await NcStandardModel.classes + source.classes()
+    var classID: NcClassID? = identity.classID
+    while let id = classID {
+      if let declared = classes.first(where: { $0.classID == id })?.properties.first(where: { $0.id == property }) {
+        return declared.isSequence
+      }
+      classID = id.ncParent
+    }
+    return false
+  }
+
+  private static func notASequence(_ property: NcElementID) -> NcMethodResult {
+    .error(.invalidRequest, "Property \(property.level)p\(property.index) is not a sequence")
+  }
+
   static func noProperty(_ property: NcElementID) -> NcMethodResult {
     .error(.propertyNotImplemented, "No property \(property.level)p\(property.index)")
   }
@@ -176,17 +195,15 @@ final class NcBlock<Source: NcObjectSource>: NcObject<Source> {
   }
 
   override func get(_ property: NcElementID, _ session: NcSession) async -> NcMethodResult {
-    guard property == Self.members else { return await super.get(property, session) }
+    guard property == .members else { return await super.get(property, session) }
     let members = await descriptors(of: identity, recurse: false, session)
     return NcMethodResult(value: .array(members.map(\.member.json)))
   }
 
   override func set(_ property: NcElementID, to value: NMOSJSONValue, _ session: NcSession) async -> NcMethodResult {
-    guard property == Self.members else { return await super.set(property, to: value, session) }
+    guard property == .members else { return await super.set(property, to: value, session) }
     return Self.readOnly(property)
   }
-
-  private static var members: NcElementID { NcElementID(level: 2, index: 2) }
 
   private func blockMethod(
     _ method: UInt16,
@@ -291,10 +308,10 @@ final class NcClassManager<Source: NcObjectSource>: NcObject<Source> {
   private func classDescriptor(_ classID: NcClassID, inherited: Bool) async -> NMOSJSONValue? {
     let key = NcDescriptorCache.Key.controlClass(classID, inherited: inherited)
     // what is kept stands only while the source describes its classes as it did
-    _ = await descriptorLists()
-    if let entry = model.descriptors.entry(for: key) { return entry.json }
+    let lists = await descriptorLists()
+    if let entry = model.descriptors.entry(for: key, in: lists) { return entry.json }
 
-    let classes = await NcStandardModel.classes + source.classes()
+    let classes = NcStandardModel.classes + lists.sourceClasses
     guard var descriptor = classes.first(where: { $0.classID == classID }) else { return nil }
     var ancestor = classID.ncParent
     while inherited, let id = ancestor {
@@ -306,16 +323,16 @@ final class NcClassManager<Source: NcObjectSource>: NcObject<Source> {
       }
       ancestor = id.ncParent
     }
-    return model.descriptors.keep(.init(json: descriptor.json), for: key).json
+    return model.descriptors.keep(.init(json: descriptor.json), for: key, in: lists).json
   }
 
   /// The descriptor of a datatype as `GetDatatype` answers with it, kept likewise.
   private func datatypeDescriptor(_ name: String, inherited: Bool) async -> NMOSJSONValue? {
     let key = NcDescriptorCache.Key.datatype(name, inherited: inherited)
-    _ = await descriptorLists()
-    if let entry = model.descriptors.entry(for: key) { return entry.json }
+    let lists = await descriptorLists()
+    if let entry = model.descriptors.entry(for: key, in: lists) { return entry.json }
 
-    let datatypes = await NcStandardModel.datatypes + source.datatypes()
+    let datatypes = NcStandardModel.datatypes + lists.sourceDatatypes
     guard var descriptor = datatypes.first(where: { $0.name == name }) else { return nil }
     if inherited, case .struct(var fields, let parentType) = descriptor.kind {
       // with the fields of every struct it extends
@@ -328,7 +345,7 @@ final class NcClassManager<Source: NcObjectSource>: NcObject<Source> {
       }
       descriptor.kind = .struct(fields: fields, parentType: parentType)
     }
-    return model.descriptors.keep(.init(json: descriptor.json), for: key).json
+    return model.descriptors.keep(.init(json: descriptor.json), for: key, in: lists).json
   }
 
   /// The value of `controlClasses` or `datatypes`: every descriptor there is, which

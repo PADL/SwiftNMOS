@@ -187,7 +187,9 @@ final class NMOSOcaControlClasses {
       for property in inherited.properties {
         switch property.source {
         case let .members(id):
+          // the object model lists the members; a change to them is still notified
           presentation.consumed.insert(id)
+          presentation.standardIDs[id] = property.id
         case let .property(id):
           // an object without the OCA property does without the standard one
           guard let description = declared[id], description.getMethodID != nil else { continue }

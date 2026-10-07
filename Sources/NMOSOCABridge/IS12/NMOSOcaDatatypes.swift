@@ -352,8 +352,27 @@ final class NMOSOcaDatatypes {
       guard standard.doubleValue != nil else { throw mismatch() }
     case .string, .blob, .organizationID:
       guard standard.stringValue != nil else { throw mismatch() }
-    case .elementID, .classID:
+    case .elementID:
       guard standard.arrayValue?.allSatisfy({ $0.integerValue != nil }) == true else { throw mismatch() }
+    case .classID:
+      // the proprietary marker and the two fields after it go back to OCP.2's
+      // [65535, "0AE91B"], as `standard(from:)` read them
+      guard let fields = standard.arrayValue?.compactMap(\.integerValue),
+            fields.count == standard.arrayValue?.count
+      else { throw mismatch() }
+      var items = [NMOSJSONValue]()
+      var index = fields.startIndex
+      while index < fields.endIndex {
+        if fields[index] == 0xFFFF, index + 2 < fields.endIndex {
+          let authority = fields[index + 1] << 16 | fields[index + 2]
+          items.append(.array([.integer(0xFFFF), .string(String(format: "%06X", authority))]))
+          index += 3
+        } else {
+          items.append(.integer(fields[index]))
+          index += 1
+        }
+      }
+      return .array(items)
     case let .structure(name):
       guard let object = standard.objectValue, let fields = fields[name] else { throw mismatch() }
       return try .object(Dictionary(uniqueKeysWithValues: fields.map { field in
