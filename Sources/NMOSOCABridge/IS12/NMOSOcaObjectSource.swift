@@ -410,7 +410,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
         // the getter answers with the pair; this property is one member of it
         guard let answer = parameters?[field] else { throw NMOSOcaMissingAnswer() }
         return try NcMethodResult(value: classes.datatypes.standard(from: NMOSJSONValue(ocp2: answer), as: schema))
-      case let .property(_, schema, standardForm):
+      case let .property(_, schema, ncForm):
         // a getter answers with named parameters; a record's fields name themselves
         var answer: Any? = parameters
         if let name = description.ocp2GetNames.first {
@@ -419,7 +419,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
         }
         guard let answer else { throw NMOSOcaMissingAnswer() }
         let oca = try NMOSJSONValue(ocp2: answer)
-        if let standardForm { return NcMethodResult(value: standardForm.standardValue(from: oca)) }
+        if let ncForm { return NcMethodResult(value: ncForm.ncValue(from: oca)) }
         guard let schema else { return NcMethodResult(value: oca) }
         return try NcMethodResult(value: classes.datatypes.standard(from: oca, as: schema))
       }

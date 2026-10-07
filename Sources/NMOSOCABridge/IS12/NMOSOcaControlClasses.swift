@@ -26,8 +26,8 @@ import SwiftOCADevice
 struct NMOSOcaPropertyBinding: Sendable {
   enum Value: Sendable {
     /// An OCA property, read and written through its accessor methods; one of a standard
-    /// property may be presented in a standard form of its type's own.
-    case property(OcaDevicePropertyDescriptor, NMOSOcaSchema?, (any NMOSOcaStandardValue.Type)? = nil)
+    /// property may be presented as an Nc datatype of its type's own.
+    case property(OcaDevicePropertyDescriptor, NMOSOcaSchema?, (any NMOSOcaNcValue.Type)? = nil)
     /// One component of an OCA vector property, by the name of its field in the pair
     /// the property's accessors carry.
     case component(OcaDevicePropertyDescriptor, field: String, NMOSOcaSchema)
@@ -198,10 +198,10 @@ final class NMOSOcaControlClasses {
           guard let description = declared[id], description.getMethodID != nil else { continue }
           presentation.consumed.insert(id)
           presentation.standardIDs[id] = property.id
-          let standardForm = description.valueType as? any NMOSOcaStandardValue.Type
+          let ncForm = description.valueType as? any NMOSOcaNcValue.Type
           presentation.properties[property.id] = NMOSOcaPropertyBinding(
-            value: .property(description, try? datatypes.schema(of: description.valueType), standardForm),
-            isReadOnly: !description.isSettable || standardForm != nil
+            value: .property(description, try? datatypes.schema(of: description.valueType), ncForm),
+            isReadOnly: !description.isSettable || ncForm != nil
           )
         }
       }

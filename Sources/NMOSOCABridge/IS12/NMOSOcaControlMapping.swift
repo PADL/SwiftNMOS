@@ -39,8 +39,8 @@ import SwiftOCADevice
 public struct NMOSOcaControlMapping: Sendable {
   /// Where the value of a standard property comes from.
   public enum Source: Sendable {
-    /// An OCA property of the object; one of a type with a standard form of its own
-    /// (`NMOSOcaStandardValue`) is presented in that form.
+    /// An OCA property of the object; one of a type with an Nc datatype of its own
+    /// (`NMOSOcaNcValue`) is presented in that form.
     case property(OcaPropertyID)
     /// A block's members, which the object model lists from the OCA property named.
     case members(OcaPropertyID)

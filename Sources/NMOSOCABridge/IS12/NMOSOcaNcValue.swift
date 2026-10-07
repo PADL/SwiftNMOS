@@ -17,12 +17,12 @@
 import NMOS
 import SwiftOCA
 
-/// An OCA type that a standard property presents as an MS-05-02 type of its own, as
-/// NcDeviceManager presents `OcaManufacturer` as `NcManufacturer`. Such a property is
-/// read only: the standard value is not one the OCA setter takes.
-protocol NMOSOcaStandardValue: Sendable {
-  /// The standard value from the OCP.2 form of the OCA value.
-  static func standardValue(from oca: NMOSJSONValue) -> NMOSJSONValue
+/// An OCA type that a property of MS-05-02's standard model presents as an Nc datatype of
+/// another shape, as NcDeviceManager presents `OcaManufacturer` as `NcManufacturer`. Such a
+/// property is read only: the Nc value is not one the OCA setter takes.
+protocol NMOSOcaNcValue: Sendable {
+  /// The Nc value from the OCP.2 form of the OCA value.
+  static func ncValue(from oca: NMOSJSONValue) -> NMOSJSONValue
 }
 
 private extension NMOSJSONValue {
@@ -34,8 +34,8 @@ private extension NMOSJSONValue {
   }
 }
 
-extension OcaManufacturer: NMOSOcaStandardValue {
-  static func standardValue(from oca: NMOSJSONValue) -> NMOSJSONValue {
+extension OcaManufacturer: NMOSOcaNcValue {
+  static func ncValue(from oca: NMOSJSONValue) -> NMOSJSONValue {
     // an organisation ID is three octets, written in hexadecimal
     let organization = oca["OrganizationID"]?.stringValue.flatMap { Int64($0, radix: 16) }
     return [
@@ -46,8 +46,8 @@ extension OcaManufacturer: NMOSOcaStandardValue {
   }
 }
 
-extension OcaProduct: NMOSOcaStandardValue {
-  static func standardValue(from oca: NMOSJSONValue) -> NMOSJSONValue {
+extension OcaProduct: NMOSOcaNcValue {
+  static func ncValue(from oca: NMOSJSONValue) -> NMOSJSONValue {
     [
       "name": oca.text("Name"), "key": oca.text("ModelID"), "revisionLevel": oca.text("RevisionLevel"),
       "brandName": oca.optionalText("BrandName"), "uuid": oca.optionalText("UUID"),
@@ -56,8 +56,8 @@ extension OcaProduct: NMOSOcaStandardValue {
   }
 }
 
-extension OcaDeviceOperationalState: NMOSOcaStandardValue {
-  static func standardValue(from oca: NMOSJSONValue) -> NMOSJSONValue {
+extension OcaDeviceOperationalState: NMOSOcaNcValue {
+  static func ncValue(from oca: NMOSJSONValue) -> NMOSJSONValue {
     // OcaDeviceGenericState to NcDeviceGenericState; an OCA fault is an internal error
     let generic: Int64 = switch oca["Generic"]?.integerValue {
     case 0: 1
@@ -70,8 +70,8 @@ extension OcaDeviceOperationalState: NMOSOcaStandardValue {
   }
 }
 
-extension OcaResetCause: NMOSOcaStandardValue {
-  static func standardValue(from oca: NMOSJSONValue) -> NMOSJSONValue {
+extension OcaResetCause: NMOSOcaNcValue {
+  static func ncValue(from oca: NMOSJSONValue) -> NMOSJSONValue {
     // OcaResetCause counts from power-on at 0; NcResetCause keeps 0 for unknown
     guard let cause = oca.integerValue, (0...3).contains(cause) else { return 0 }
     return .integer(cause + 1)
