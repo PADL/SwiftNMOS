@@ -19,8 +19,8 @@ import Foundation
 /// Identifies a property, method or event within a class: the inheritance level of the
 /// class that defines it, and its index there (MS-05-02 `NcElementId`).
 public struct NcElementID: Codable, Sendable, Hashable, CustomStringConvertible {
-  public var level: UInt16
-  public var index: UInt16
+  public let level: UInt16
+  public let index: UInt16
 
   public init(level: UInt16, index: UInt16) {
     self.level = level
@@ -60,36 +60,39 @@ public enum NcMethodStatus: Int, Codable, Sendable {
 /// The result of a method: `NcMethodResult` and the types derived from it. A result
 /// carries a value when the method returns one, or an error message when it failed.
 public struct NcMethodResult: Codable, Sendable, Hashable {
-  public var status: NcMethodStatus
-  public var value: NMOSJSONValue?
-  public var errorMessage: String?
+  public let status: NcMethodStatus
+  public let value: NMOSJSONValue?
+  public let errorMessage: String?
   /// The fields of a derived result type other than `value`, such as the several
   /// results of a non-standard method.
-  public var fields: [String: NMOSJSONValue]?
+  public let fields: [String: NMOSJSONValue]?
 
   public init(status: NcMethodStatus = .ok, value: NMOSJSONValue? = nil) {
-    self.status = status
-    self.value = value
+    self.init(status: status, value: value, errorMessage: nil, fields: nil)
   }
 
   public init(fields: [String: NMOSJSONValue]) {
-    status = .ok
+    self.init(status: .ok, value: nil, errorMessage: nil, fields: fields)
+  }
+
+  private init(status: NcMethodStatus, value: NMOSJSONValue?, errorMessage: String?, fields: [String: NMOSJSONValue]?) {
+    self.status = status
+    self.value = value
+    self.errorMessage = errorMessage
     self.fields = fields
   }
 
   public static func error(_ status: NcMethodStatus, _ message: String) -> Self {
-    var result = Self(status: status)
-    result.errorMessage = message
-    return result
+    Self(status: status, value: nil, errorMessage: message, fields: nil)
   }
 }
 
 /// An event from an object, which IS-12 sends to the sessions subscribed to it.
 public struct NcNotification: Sendable, Hashable {
-  public var oid: NcOid
-  public var eventID: NcElementID
+  public let oid: NcOid
+  public let eventID: NcElementID
   /// For `PropertyChanged`, an `NcPropertyChangedEventData` object.
-  public var eventData: NMOSJSONValue
+  public let eventData: NMOSJSONValue
 
   public init(oid: NcOid, eventID: NcElementID = .propertyChanged, eventData: NMOSJSONValue) {
     self.oid = oid
@@ -132,9 +135,9 @@ public struct NcSession: Sendable, Hashable, CustomStringConvertible {
 /// property is a command too (`NcObject.Get`). `arguments` is keyed by the parameter
 /// names of the method's descriptor.
 public struct NcCommand: Sendable, Equatable {
-  public var oid: NcOid
-  public var methodID: NcElementID
-  public var arguments: [String: NMOSJSONValue]
+  public let oid: NcOid
+  public let methodID: NcElementID
+  public let arguments: [String: NMOSJSONValue]
 
   public init(oid: NcOid, methodID: NcElementID, arguments: [String: NMOSJSONValue] = [:]) {
     self.oid = oid

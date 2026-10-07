@@ -20,14 +20,14 @@ import Synchronization
 /// What `NcObject` says of an object, apart from its user label, and what the source
 /// knows the object by, which it is handed back with every request about the object.
 public struct NcObjectIdentity<Object: Sendable>: Sendable {
-  public var classID: NcClassID
-  public var oid: NcOid
+  public let classID: NcClassID
+  public let oid: NcOid
   /// Whether the object keeps this oid across restarts.
-  public var constantOid: Bool
+  public let constantOid: Bool
   /// The block that contains the object; nil only for the root block.
-  public var owner: NcOid?
-  public var role: String
-  public var object: Object
+  public let owner: NcOid?
+  public let role: String
+  public let object: Object
 
   public init(
     classID: NcClassID,
@@ -277,29 +277,42 @@ final class NcDescriptorCache: Sendable {
 
 /// Holds each sequence property while one session changes it, so that changes made by
 /// reading the whole sequence and writing it back are made one at a time.
-actor NcSequenceLocks {
+final class NcSequenceLocks: Sendable {
   struct Key: Hashable, Sendable {
     let oid: NcOid
     let property: NcElementID
   }
 
-  private var held = Set<Key>()
-  private var waiting = [Key: [CheckedContinuation<Void, Never>]]()
+  private struct State {
+    var held = Set<Key>()
+    var waiting = [Key: [CheckedContinuation<Void, Never>]]()
+  }
+
+  private let state = Mutex(State())
 
   func acquire(_ key: Key) async {
-    guard !held.insert(key).inserted else { return }
-    await withCheckedContinuation { waiting[key, default: []].append($0) }
+    await withCheckedContinuation { continuation in
+      let acquired = state.withLock { state in
+        if state.held.insert(key).inserted { return true }
+        state.waiting[key, default: []].append(continuation)
+        return false
+      }
+      if acquired { continuation.resume() }
+    }
   }
 
   /// Hands the property to the next session waiting for it, if there is one.
   func release(_ key: Key) {
-    guard var queue = waiting[key], !queue.isEmpty else {
-      held.remove(key)
-      return
+    let next = state.withLock { state -> CheckedContinuation<Void, Never>? in
+      guard var queue = state.waiting[key], !queue.isEmpty else {
+        state.held.remove(key)
+        return nil
+      }
+      let next = queue.removeFirst()
+      state.waiting[key] = queue.isEmpty ? nil : queue
+      return next
     }
-    let next = queue.removeFirst()
-    waiting[key] = queue.isEmpty ? nil : queue
-    next.resume()
+    next?.resume()
   }
 }
 

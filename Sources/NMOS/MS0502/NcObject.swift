@@ -88,14 +88,8 @@ class NcObject<Source: NcObjectSource> {
     let key = NcSequenceLocks.Key(oid: identity.oid, property: property)
     let locks = model.sequenceLocks
     await locks.acquire(key)
-    do {
-      let result = try await sequence(method, of: property, arguments, session)
-      await locks.release(key)
-      return result
-    } catch {
-      await locks.release(key)
-      throw error
-    }
+    defer { locks.release(key) }
+    return try await sequence(method, of: property, arguments, session)
   }
 
   private func sequence(
