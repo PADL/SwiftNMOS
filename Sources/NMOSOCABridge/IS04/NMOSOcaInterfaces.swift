@@ -48,7 +48,7 @@ extension NMOSOcaBridge {
   static let interfaceProperties = SwiftOCADevice.OcaNetworkInterface.nmosNameProperties
     + .of(SwiftOCADevice.OcaNetworkInterface.self, [
       .init(defLevel: 2, propertyIndex: 7), // adaptationIdentifier
-      .init(defLevel: 2, propertyIndex: 8), // currentAdaptationData
+      .init(defLevel: 2, propertyIndex: 8), // activeNetworkSettings
     ])
 
   /// The node's interfaces: those the host names, then any OCA network interface that
@@ -59,7 +59,7 @@ extension NMOSOcaBridge {
     var names = Set(interfaces.map(\.name))
     for interface in await walker.networkInterfaces where !names.contains(interface.nmosName) {
       guard interface.adaptationIdentifier == MilanAdaptation.identifier,
-            let data = try? MilanNetworkInterfaceAdaptationData(blob: interface.currentAdaptationData),
+            let data = try? MilanNetworkInterfaceAdaptationData(blob: interface.activeNetworkSettings),
             data.macAddress != .zero else { continue }
       names.insert(interface.nmosName)
       interfaces.append(.init(name: interface.nmosName, chassisID: nil, portID: data.macAddress.nmosString))
