@@ -55,12 +55,6 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
   private var generation: UInt64 = 0
   private var invalidator: Task<Void, Never>?
 
-  /// What each stream of `connectionChanges()` last knew of each endpoint's connection.
-  /// An activation updates it too, as the caller records what it reads back: otherwise a
-  /// change back to what a stream last read would go unreported.
-  private var generations = [UInt64: [Key: NMOSConnectionState]]()
-  private var nextGeneration: UInt64 = 0
-
   private let walker: NMOSOcaEndpointWalker
   private let adaptations: NMOSOcaAdaptations
   private let device: OcaDevice
@@ -145,14 +139,6 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
     )
   }
 
-  private var connectable: [(key: Key, endpoint: NMOSOcaEndpoint, adaptation: any NMOSOcaConnecting)] {
-    get async {
-      await claimed().compactMap { key, claim in
-        endpoint(of: claim).map { (key, $0, claim.adaptation) }
-      }
-    }
-  }
-
   private func find(
     _ kind: NMOSResourceKind,
     _ id: NMOSID
@@ -216,10 +202,7 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
       throw NMOSConnectionError(error)
     }
     // the endpoint that was found is a copy from before the change
-    let active = try await adaptation.active(of: endpoint.refreshed)
-    let key = Key(kind: kind, id: id)
-    for stream in generations.keys { generations[stream]?[key] = active }
-    return active
+    return try await adaptation.active(of: endpoint.refreshed)
   }
 
   // MARK: - Changes
@@ -231,28 +214,17 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
     }
   }
 
-  /// Reports every endpoint whose connection differs from when it was last looked at,
-  /// each time something the connections are read from changes.
+  /// Reports every endpoint, and every one that has gone, each time something the
+  /// connections are read from changes. The caller compares each with what it last
+  /// recorded, activations included, which a comparison here could not know of.
   private func observe(_ continuation: AsyncStream<(kind: NMOSResourceKind, id: NMOSID)>.Continuation) async {
-    let stream = nextGeneration
-    nextGeneration += 1
-    generations[stream] = [:]
-    defer { generations[stream] = nil }
+    var reported = Set<Key>()
     for await _ in changes() {
-      let before = generations[stream] ?? [:]
-      var current = [Key: NMOSConnectionState]()
-      for (key, endpoint, adaptation) in await connectable {
-        current[key] = try? await adaptation.active(of: endpoint)
-      }
-      let known = generations[stream] ?? [:]
-      for key in Set(known.keys).union(current.keys) where known[key] != current[key] {
+      let current = Set(await claimed().filter { endpoint(of: $0.value) != nil }.keys)
+      for key in reported.union(current) {
         continuation.yield((key.kind, key.id))
       }
-      // an activation made while the endpoints were read may be older or newer than the
-      // read; where they differ, forget the endpoint, so the next pass reports it again
-      var next = current
-      for (key, state) in known where before[key] != state && current[key] != state { next[key] = nil }
-      generations[stream] = next
+      reported = current
     }
     continuation.finish()
   }

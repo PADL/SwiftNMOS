@@ -89,7 +89,7 @@ final class DanteConnectionTests: XCTestCase {
   }
 
   /// A transmit channel is subscribed to by the device's name, so renaming the device
-  /// changes its connection.
+  /// changes its connection: the device manager is watched, and the sender reported.
   @OcaDevice
   func testRenamingTheDeviceChangesATransmitChannelsConnection() async throws {
     let (application, stack) = try await makeStack()
