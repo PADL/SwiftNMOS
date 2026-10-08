@@ -93,6 +93,12 @@ A method the device refuses to a controller is still presented: the device's
 `PermissionDenied` is the session's `Unauthorized` when it is called, as over OCP.1 and
 OCP.2.
 
+A property or method the device declares `hidden` is left out of every description: its
+class's descriptor, the class manager's classes, and the datatypes, which list only those a
+described element refers to (`NMOSOcaControlClasses.listDatatypes`). As over OCP.1, it is
+still served: `Get` and `Set` by its ID, and the method when invoked. A hidden property is
+neither subscribed to nor notified, and has no runtime constraints.
+
 `NMOSOcaObjectSource.handleCommand` serves a presented method from the class's `methods`, keyed by
 the mapped `NcElementID`. Each IS-12 argument is looked up by its OCP.2 name (a missing one
 is `ParameterError`) and converted by its schema, and the command goes to the device as the

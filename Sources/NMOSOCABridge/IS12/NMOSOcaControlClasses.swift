@@ -35,6 +35,15 @@ struct NMOSOcaPropertyBinding: Sendable {
 
   let value: Value
   let isReadOnly: Bool
+
+  var description: OcaDevicePropertyDescriptor {
+    switch value {
+    case let .property(property, _, _), let .component(property, _, _): property
+    }
+  }
+
+  /// A hidden property is served by its ID, but not described, notified or constrained.
+  var isHidden: Bool { description.flags.contains(.hidden) }
 }
 
 /// How one method of an MS-05-02 class is invoked on an OCA object: the OCA method, and
@@ -76,6 +85,8 @@ final class NMOSOcaControlClasses {
   /// Every non-standard class of the objects met so far, each once, made again when a
   /// class not met before is described.
   private(set) var descriptors = [NcClassDescriptor]()
+  /// The datatypes those descriptors refer to, and those they refer to in turn.
+  private(set) var datatypeDescriptors = [NcDatatypeDescriptor]()
 
   nonisolated init(mapping: NMOSOcaControlMapping, logger: Logger) {
     self.mapping = mapping
@@ -92,6 +103,29 @@ final class NMOSOcaControlClasses {
     return byClass.values.sorted { $0.classID.lexicographicallyPrecedes($1.classID) }
   }
 
+  /// The datatypes met so far that a described class refers to; one met only by a hidden
+  /// element, or by one that could not be presented, is left out.
+  private func listDatatypes() -> [NcDatatypeDescriptor] {
+    let met = Dictionary(datatypes.descriptors.map { ($0.name, $0) }) { first, _ in first }
+    var pending = descriptors.flatMap { descriptor in
+      descriptor.properties.compactMap(\.typeName) + descriptor.events.map(\.eventDatatype)
+        + descriptor.methods.flatMap { [$0.resultDatatype] + $0.parameters.compactMap(\.typeName) }
+    }
+    var referred = Set<String>()
+    while let name = pending.popLast() {
+      guard referred.insert(name).inserted, let datatype = met[name] else { continue }
+      switch datatype.kind {
+      case let .typedef(parentType, _):
+        pending.append(parentType)
+      case let .struct(fields, parentType):
+        pending += fields.compactMap(\.typeName) + [parentType].compactMap(\.self)
+      case .primitive, .enum:
+        break
+      }
+    }
+    return datatypes.descriptors.filter { referred.contains($0.name) }
+  }
+
   func controlClass(
     of object: SwiftOCADevice.OcaRoot,
     role: String
@@ -101,6 +135,7 @@ final class NMOSOcaControlClasses {
     let controlClass = describe(object, role: role)
     classes[type] = controlClass
     descriptors = listDescriptors()
+    datatypeDescriptors = listDatatypes()
     return controlClass
   }
 
@@ -261,18 +296,19 @@ final class NMOSOcaControlClasses {
         schema = try datatypes.schema(of: property.valueType)
         components = [(property.name, property.propertyID, .property(property, schema))]
       }
-      let reference = try datatypes.reference(to: schema)
+      // a hidden property is not described, so nothing is subscribed to or notified of it
+      let reference = property.flags.contains(.hidden) ? nil : try datatypes.reference(to: schema)
       // a setter is no promise: the device may still refuse a set when it is made
       let isReadOnly = !property.isSettable
       for component in components {
         let id = NcElementID(level: level, index: component.id.propertyIndex)
-        let binding = NMOSOcaPropertyBinding(value: component.binding, isReadOnly: isReadOnly)
+        described.properties[id] = NMOSOcaPropertyBinding(value: component.binding, isReadOnly: isReadOnly)
+        guard let reference else { continue }
         described.descriptor.properties.append(NcPropertyDescriptor(
           id: id, name: component.name, typeName: reference.typeName,
           isReadOnly: isReadOnly, isNullable: reference.isNullable,
           isSequence: reference.isSequence
         ))
-        described.properties[id] = binding
         described.standardIDs[component.id] = id
       }
     } catch {
@@ -299,6 +335,12 @@ final class NMOSOcaControlClasses {
       do {
         let parameters = try method.parameters.map { try field($0) }
         let results = try method.results.map { try field($0) }
+        let binding = NMOSOcaMethodBinding(methodID: method.methodID, parameters: parameters, results: results)
+        // a hidden method can be invoked, but is not described
+        guard !method.isHidden else {
+          described.methods[id] = binding
+          continue
+        }
         // one result is the `value` of an NcMethodResult, as a property's is; several are
         // fields of their own
         let fields = results.count == 1
@@ -310,9 +352,7 @@ final class NMOSOcaControlClasses {
             isNullable: reference.isNullable, isSequence: reference.isSequence
           )
         }
-        described.methods[id] = NMOSOcaMethodBinding(
-          methodID: method.methodID, parameters: parameters, results: results
-        )
+        described.methods[id] = binding
         let resultDatatype = try datatypes.methodResult(named: className + method.name + "Result", fields: fields)
         described.descriptor.methods.append(NcMethodDescriptor(
           id: id, name: method.name, resultDatatype: resultDatatype, parameters: descriptors, isDeprecated: false
