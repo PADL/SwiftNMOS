@@ -507,17 +507,17 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   @OcaDevice
   func testValuesMS0502CannotDescribeAreReshaped() async throws {
     let trimmed = oid(Fixture.trimmed.objectNumber)
-    Fixture.trimmed.routing = [1: [OcaPortID(mode: .input, index: 2)]]
+    Fixture.trimmed.routing = [1: [OcaPortID(direction: .input, index: 2)]]
     let routing = await get(trimmed, 6, 2)
-    XCTAssertEqual(routing.value, [["Key": 1, "Value": [["Mode": 1, "Index": 2]]]])
+    XCTAssertEqual(routing.value, [["Key": 1, "Value": [["Direction": 1, "Index": 2]]]])
 
     // a sequence may hold a key twice and a map cannot, so the first entry for a key is kept
     let written = await set(trimmed, 6, 2, [
-      ["Key": 3, "Value": [["Mode": 2, "Index": 4]]],
-      ["Key": 3, "Value": [["Mode": 1, "Index": 5]]],
+      ["Key": 3, "Value": [["Direction": 2, "Index": 4]]],
+      ["Key": 3, "Value": [["Direction": 1, "Index": 5]]],
     ])
     XCTAssertEqual(written.status, .ok)
-    XCTAssertEqual(Fixture.trimmed.routing, [3: [OcaPortID(mode: .output, index: 4)]])
+    XCTAssertEqual(Fixture.trimmed.routing, [3: [OcaPortID(direction: .output, index: 4)]])
     let descriptor = try await classDescriptor([1, 2, Fixture.aes, 1, 1, 5, Fixture.padl, 1])
     let routingDescriptor = descriptor["properties"]?.arrayValue?.first { $0["name"] == "routing" }
     XCTAssertEqual(routingDescriptor?["isReadOnly"], false)
@@ -669,7 +669,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   /// lists is of the type the descriptor names, where the device lets it be read.
   @OcaDevice
   func testEveryPropertyReadsAsItsDescriptorSays() async throws {
-    Fixture.trimmed.routing = [1: [OcaPortID(mode: .input, index: 2)]]
+    Fixture.trimmed.routing = [1: [OcaPortID(direction: .input, index: 2)]]
     let manager = model.classManagerOid
     let allDatatypes = await get(manager, 3, 2)
     let datatypeList = try XCTUnwrap(allDatatypes.value?.arrayValue)
@@ -1135,7 +1135,7 @@ final class NMOSOcaDatatypesTests: XCTestCase {
     let datatypes = NMOSOcaDatatypes()
     let record = Record(
       name: "A", colour: .green, flags: Flags(rawValue: 5), id: "3.1",
-      blob: OcaBlob([1, 2, 3]), level: -.infinity, ports: [OcaPortID(mode: .output, index: 7)]
+      blob: OcaBlob([1, 2, 3]), level: -.infinity, ports: [OcaPortID(direction: .output, index: 7)]
     )
     let oca = try NMOSJSONValue(ocp2: Ocp2Encoder().encodeValue(record))
     let standard = try datatypes.standard(from: oca, as: datatypes.schema(of: Record.self))
@@ -1143,7 +1143,7 @@ final class NMOSOcaDatatypesTests: XCTestCase {
       "Name": "A", "Colour": 3, "Flags": 5, "Id": [3, 1], "Blob": "AQID",
       // JSON has no infinity; the type's most negative number stands for it
       "Level": .number(-Double(Float.greatestFiniteMagnitude)),
-      "Ports": [["Mode": 2, "Index": 7]],
+      "Ports": [["Direction": 2, "Index": 7]],
     ])
     let back = try datatypes.oca(from: standard, as: .structure("Record"))
     let decoded = try Ocp2Decoder().decodeValue(Record.self, from: back.ocp2)
@@ -1162,7 +1162,7 @@ final class NMOSOcaDatatypesTests: XCTestCase {
     XCTAssertEqual(try datatypes.standard(from: 4096, as: objectNumber), 4096)
     XCTAssertEqual(try datatypes.oca(from: 1, as: objectNumber), .integer(Int64(OcaRootBlockONo)))
     let port = try datatypes.standard(
-      from: NMOSJSONValue(ocp2: Ocp2Encoder().encodeValue(OcaPort(owner: OcaRootBlockONo, id: .init(mode: .input, index: 1), name: "In"))),
+      from: NMOSJSONValue(ocp2: Ocp2Encoder().encodeValue(OcaPort(owner: OcaRootBlockONo, id: .init(direction: .input, index: 1), role: "In"))),
       as: datatypes.schema(of: OcaPort.self)
     )
     XCTAssertEqual(port["Owner"], 1)
@@ -1181,9 +1181,9 @@ final class NMOSOcaDatatypesTests: XCTestCase {
     let reference = try datatypes.reference(to: map)
     XCTAssertTrue(reference.isSequence)
     XCTAssertTrue(reference.typeName.hasPrefix("OcaMapItem_"))
-    let oca = try NMOSJSONValue(ocp2: Ocp2Encoder().encodeValue([OcaUint16(4): [OcaPortID(mode: .input, index: 1)]]))
+    let oca = try NMOSJSONValue(ocp2: Ocp2Encoder().encodeValue([OcaUint16(4): [OcaPortID(direction: .input, index: 1)]]))
     XCTAssertEqual(
-      try datatypes.standard(from: oca, as: map), [["Key": 4, "Value": [["Mode": 1, "Index": 1]]]]
+      try datatypes.standard(from: oca, as: map), [["Key": 4, "Value": [["Direction": 1, "Index": 1]]]]
     )
 
     let proprietary = OcaClassID(parent: "1.1.1.5", authority: OcaOrganizationID((0x0A, 0xE9, 0x1B)), 1)

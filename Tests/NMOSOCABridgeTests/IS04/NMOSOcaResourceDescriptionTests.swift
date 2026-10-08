@@ -65,8 +65,8 @@ private struct TestTransports {
     aes67.label = "AES67"
     aes67.networkInterfaceAssignments = [assignment]
     aes67.ports = [
-      OcaPort(owner: aes67.objectNumber, id: OcaPortID(mode: .input, index: 1), name: "Mix L"),
-      OcaPort(owner: aes67.objectNumber, id: OcaPortID(mode: .input, index: 2), name: "Mix R"),
+      OcaPort(owner: aes67.objectNumber, id: OcaPortID(direction: .input, index: 1), role: "Mix L"),
+      OcaPort(owner: aes67.objectNumber, id: OcaPortID(direction: .input, index: 2), role: "Mix R"),
     ]
     aes67.mediaStreamModeCapabilities = [OcaMediaStreamModeCapability(
       id: 1, name: "Linear", direction: [.input, .output], frameFormatList: [.rtp],
@@ -77,7 +77,7 @@ private struct TestTransports {
       endpoint: OcaMediaStreamEndpoint(
         idInternal: 1001, direction: .output, userLabel: "Program",
         networkAssignmentIDs: [1], streamModeCapabilityIDs: [1], clockONo: mediaClock.objectNumber,
-        channelMap: [1: [OcaPortID(mode: .input, index: 1)], 2: [OcaPortID(mode: .input, index: 2)]],
+        channelMap: [1: [OcaPortID(direction: .input, index: 1)], 2: [OcaPortID(direction: .input, index: 2)]],
         currentStreamMode: OcaMediaStreamMode(
           frameFormat: .rtp, encodingType: "audio/L24", samplingRate: 48000, channelCount: 2, packetTime: 1e-3
         ),
