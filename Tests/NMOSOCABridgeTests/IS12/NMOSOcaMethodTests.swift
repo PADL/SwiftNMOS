@@ -101,7 +101,7 @@ private enum MethodFixture {
     let device = OcaDevice.shared
     block = try await SwiftOCADevice.OcaBlock(role: "Methods-\(UUID().uuidString)", deviceDelegate: device)
     gain = try await SwiftOCADevice.OcaGain(role: "Gain", deviceDelegate: device, addToRootBlock: false)
-    gain.ports = [OcaPort(owner: gain.objectNumber, id: OcaPortID(mode: .input, index: 1), name: "In 1")]
+    gain.ports = [OcaPort(owner: gain.objectNumber, id: OcaPortID(direction: .input, index: 1), role: "In 1")]
     calculator = try await Calculator(role: "Calculator", deviceDelegate: device, addToRootBlock: false)
     try await block.add(actionObject: gain)
     dial = try await VendorDial(role: "Dial", deviceDelegate: device, addToRootBlock: false)
@@ -280,17 +280,17 @@ final class NMOSOcaMethodTests: XCTestCase {
 
   @OcaDevice
   func testAWorkerMethodRoundTripsThroughTheDevice() async throws {
-    let portID: NMOSJSONValue = ["Mode": 1, "Index": 1]
+    let portID: NMOSJSONValue = ["Direction": 1, "Index": 1]
     let name = await invoke(MethodFixture.gain, 3, 6, ["PortID": portID])
     XCTAssertEqual(name, NcMethodResult(value: "In 1"))
 
     let renamed = await invoke(MethodFixture.gain, 3, 7, ["ID": portID, "Name": "Input One"])
     XCTAssertEqual(renamed.status, .ok, renamed.errorMessage ?? "")
-    XCTAssertEqual(MethodFixture.gain.ports.first?.name, "Input One")
+    XCTAssertEqual(MethodFixture.gain.ports.first?.role, "Input One")
     let after = await invoke(MethodFixture.gain, 3, 6, ["PortID": portID])
     XCTAssertEqual(after.value, "Input One")
     MethodFixture.gain.ports = [OcaPort(
-      owner: MethodFixture.gain.objectNumber, id: OcaPortID(mode: .input, index: 1), name: "In 1"
+      owner: MethodFixture.gain.objectNumber, id: OcaPortID(direction: .input, index: 1), role: "In 1"
     )]
   }
 
@@ -336,7 +336,7 @@ final class NMOSOcaMethodTests: XCTestCase {
     _ = await OcaDevice.shared.handleCommand(lock, from: controller)
     defer { Task { @OcaDevice in await model.sessionEnded(other) } }
 
-    let portID: NMOSJSONValue = ["Mode": 1, "Index": 1]
+    let portID: NMOSJSONValue = ["Direction": 1, "Index": 1]
     let renamed = await invoke(MethodFixture.gain, 3, 7, ["ID": portID, "Name": "Locked out"])
     XCTAssertEqual(renamed.status, .locked)
   }

@@ -103,7 +103,7 @@ extension NMOSOcaEndpoint {
     let count = max(1, Int(endpoint.currentStreamMode.channelCount), mapped.count)
     return (0..<count).map { index in
       let port = index < mapped.count ? endpoint.channelMap[mapped[index]]?.first : nil
-      let name = port.flatMap { id in application.ports.first { $0.id == id }?.name } ?? ""
+      let name = port.flatMap { id in application.ports.first { $0.id == id }?.role } ?? ""
       return .init(label: name.isEmpty ? "Channel \(index + 1)" : name)
     }
   }
