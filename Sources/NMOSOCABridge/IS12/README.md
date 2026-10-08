@@ -133,11 +133,10 @@ Decisions:
 
 ## Notifications
 
-Every presented property is notified when it changes, metering and counters included: a
-generic sensor's `reading`, PADL's `clip`, and the counter sets of a network application,
-a network interface, a media transport application's `endpointCounterSets` and a counter
-set agent. They may also be read, or polled: `GetReading` and `GetEndpointCounter` are
-methods like any other.
+Every presented property is notified when it changes, metering included: a generic
+sensor's `reading` and PADL's `clip`. Counter sets are not properties: AES70-2:2024 §6.8
+makes them private, so they are read, or polled, with methods like any other, such as
+`GetCounterSet` and `GetEndpointCounter`.
 
 OcaLevelSensor's reading is not a property at all: SwiftOCA keeps it privately and sends
 its own change events for 4.1, which no presented property has, so a client reads it with
