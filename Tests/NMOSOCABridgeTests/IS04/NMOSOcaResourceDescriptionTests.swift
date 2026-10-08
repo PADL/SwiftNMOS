@@ -381,7 +381,7 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     let avb = try await SwiftOCADevice.OcaNetworkInterface(role: TestTransports.role("AVB"), deviceDelegate: device)
     avb.systemIOInterfaceName = "avb0"
     avb.adaptationIdentifier = MilanAdaptation.identifier
-    avb.currentAdaptationData = try MilanNetworkInterfaceAdaptationData(
+    avb.activeNetworkSettings = try MilanNetworkInterfaceAdaptationData(
       timeSourceONo: OcaInvalidONo, macAddress: OcaMacAddress((0x00, 0x22, 0x97, 0xAA, 0xBB, 0xCC))
     ).blob
     let anonymous = try await SwiftOCADevice.OcaNetworkInterface(role: TestTransports.role("IP"), deviceDelegate: device)
