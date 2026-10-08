@@ -111,10 +111,12 @@ final class NMOSOcaDatatypes {
     // a device object is written as its object number
     if type is SwiftOCADevice.OcaRoot.Type { return .objectNumber }
     switch OcaDatatypeKind(of: type) {
-    case let .base(name):
-      guard let base = Self.bases[name] else { throw NMOSOcaUnsupportedType(type, "no MS-05-02 type for \(name)") }
-      return base
-    case .blob:
+    case let .base(base):
+      guard let schema = Self.schema(of: base) else {
+        throw NMOSOcaUnsupportedType(type, "no MS-05-02 type for \(base.name)")
+      }
+      return schema
+    case .blob, .longBlob:
       return .blob
     case let .optional(wrapped):
       return try .optional(schema(of: wrapped))
@@ -167,15 +169,22 @@ final class NMOSOcaDatatypes {
     ObjectIdentifier(OcaOrganizationID.self): .organizationID,
   ]
 
-  /// The MS-05-02 type of each AES70 base type. MS-05-02 has no 8-bit integers.
-  private static let bases: [String: NMOSOcaSchema] = [
-    "OcaBoolean": .bool, "OcaString": .string,
-    "OcaInt8": .integer("NcInt16"), "OcaInt16": .integer("NcInt16"),
-    "OcaInt32": .integer("NcInt32"), "OcaInt64": .integer("NcInt64"),
-    "OcaUint8": .integer("NcUint16"), "OcaUint16": .integer("NcUint16"),
-    "OcaUint32": .integer("NcUint32"), "OcaUint64": .integer("NcUint64"),
-    "OcaFloat32": .float("NcFloat32"), "OcaFloat64": .float("NcFloat64"),
-  ]
+  /// The MS-05-02 type of an AES70 base type. MS-05-02 has no 8-bit integers.
+  private static func schema(of base: OcaBaseDataType) -> NMOSOcaSchema? {
+    switch base {
+    case .ocaBoolean: .bool
+    case .ocaString: .string
+    case .ocaInt8, .ocaInt16: .integer("NcInt16")
+    case .ocaInt32: .integer("NcInt32")
+    case .ocaInt64: .integer("NcInt64")
+    case .ocaUint8, .ocaUint16: .integer("NcUint16")
+    case .ocaUint32: .integer("NcUint32")
+    case .ocaUint64: .integer("NcUint64")
+    case .ocaFloat32: .float("NcFloat32")
+    case .ocaFloat64: .float("NcFloat64")
+    case .none, .ocaBitString, .ocaBlobFixedLen, .ocaBit: nil
+    }
+  }
 
   private static func rawType<R: RawRepresentable>(of type: R.Type) -> Any.Type { R.RawValue.self }
 
