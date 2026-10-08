@@ -248,9 +248,10 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
       for key in Set(known.keys).union(current.keys) where known[key] != current[key] {
         continuation.yield((key.kind, key.id))
       }
-      // an activation made while the endpoints were read may be newer than the read
+      // an activation made while the endpoints were read may be older or newer than the
+      // read; where they differ, forget the endpoint, so the next pass reports it again
       var next = current
-      for (key, state) in known where before[key] != state { next[key] = state }
+      for (key, state) in known where before[key] != state && current[key] != state { next[key] = nil }
       generations[stream] = next
     }
     continuation.finish()
