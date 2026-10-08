@@ -83,6 +83,47 @@ private final class VendorDial: SwiftOCADevice.OcaAgent {
   }
 }
 
+/// What only a hidden property of `Vault` holds.
+private struct VaultCombination: Codable, Equatable, Sendable {
+  var first: OcaUint16
+  var second: OcaUint16
+}
+
+/// An agent with a hidden property and a hidden method, which the device still answers.
+@OcaDeviceClass
+private class Vault: SwiftOCADevice.OcaAgent {
+  override class var classID: OcaClassID {
+    OcaClassID(parent: super.classID, 0x7F0C)
+  }
+
+  @OcaDeviceProperty(propertyID: OcaPropertyID("3.1"), getMethodID: OcaMethodID("3.1"))
+  var door: OcaUint16 = 1
+
+  @OcaDeviceProperty(
+    propertyID: OcaPropertyID("3.2"),
+    getMethodID: OcaMethodID("3.2"),
+    setMethodID: OcaMethodID("3.3"),
+    hidden: true
+  )
+  var combination = VaultCombination(first: 4, second: 2)
+
+  @OcaDeviceMethod("3.4", name: "GetOpenings", access: .read, hidden: true)
+  func getOpenings(from controller: any OcaController) -> OcaUint16 {
+    9
+  }
+}
+
+/// A class derived from `Vault`, which inherits its hidden elements.
+@OcaDeviceClass
+private final class BankVault: Vault {
+  override class var classID: OcaClassID {
+    OcaClassID(parent: super.classID, 1)
+  }
+
+  @OcaDeviceProperty(propertyID: OcaPropertyID("4.1"), getMethodID: OcaMethodID("4.1"))
+  var alarm: OcaUint16 = 0
+}
+
 /// The objects the tests share, in a block of their own.
 @OcaDevice
 private enum MethodFixture {
@@ -93,6 +134,8 @@ private enum MethodFixture {
   private(set) static var gain: SwiftOCADevice.OcaGain!
   private(set) static var calculator: Calculator!
   private(set) static var dial: VendorDial!
+  private(set) static var vault: Vault!
+  private(set) static var bankVault: BankVault!
   private(set) static var model: NMOSOcaDeviceModel!
 
   static func make() async throws {
@@ -107,6 +150,12 @@ private enum MethodFixture {
     dial = try await VendorDial(role: "Dial", deviceDelegate: device, addToRootBlock: false)
     try await block.add(actionObject: calculator)
     try await block.add(actionObject: dial)
+    // in a block of their own, so the first block's members stay as they are
+    let vaults = try await SwiftOCADevice.OcaBlock(role: "Vaults-\(UUID().uuidString)", deviceDelegate: device)
+    vault = try await Vault(role: "Vault", deviceDelegate: device, addToRootBlock: false)
+    bankVault = try await BankVault(role: "BankVault", deviceDelegate: device, addToRootBlock: false)
+    try await vaults.add(actionObject: vault)
+    try await vaults.add(actionObject: bankVault)
     model = NMOSOcaDeviceModel(device: device)
   }
 }
@@ -276,7 +325,57 @@ final class NMOSOcaMethodTests: XCTestCase {
     XCTAssertEqual(methods["ClearResetCause"]?["id"], NcElementID(level: 5, index: 16).json)
   }
 
+  @OcaDevice
+  func testHiddenElementsAreNotDescribed() async throws {
+    for object in [MethodFixture.vault!, MethodFixture.bankVault!] {
+      let descriptor = try await classDescriptor(of: object)
+      let properties = descriptor["properties"]?.arrayValue ?? []
+      XCTAssertTrue(properties.contains { $0["name"] == "door" })
+      XCTAssertFalse(properties.contains { $0["name"] == "combination" })
+      XCTAssertFalse(properties.contains { $0["id"] == NcElementID(level: 3, index: 2).json })
+      let methods = descriptor["methods"]?.arrayValue ?? []
+      XCTAssertFalse(methods.contains { $0["name"] == "GetOpenings" })
+      XCTAssertFalse(methods.contains { $0["id"] == NcElementID(level: 3, index: 4).json })
+    }
+    // nor in any class or datatype the class manager lists
+    let manager = await model.handleCommand(
+      NcCommand(oid: model.classManagerOid, methodID: .init(level: 1, index: 1), arguments: ["id": NcElementID(level: 3, index: 1).json]),
+      session: session
+    )
+    let elements = try XCTUnwrap(manager.value?.arrayValue).flatMap { descriptor in
+      (descriptor["properties"]?.arrayValue ?? []) + (descriptor["methods"]?.arrayValue ?? [])
+    }
+    XCTAssertTrue(elements.contains { $0["name"] == "alarm" })
+    XCTAssertFalse(elements.contains { $0["name"] == "combination" || $0["name"] == "GetOpenings" })
+    let datatypes = await model.handleCommand(
+      NcCommand(oid: model.classManagerOid, methodID: .init(level: 1, index: 1), arguments: ["id": NcElementID(level: 3, index: 2).json]),
+      session: session
+    )
+    let names = try XCTUnwrap(datatypes.value?.arrayValue).compactMap { $0["name"]?.stringValue }
+    XCTAssertFalse(names.contains("VaultCombination"))
+    XCTAssertFalse(names.contains { $0.contains("GetOpenings") })
+    let combination = await model.handleCommand(
+      NcCommand(oid: model.classManagerOid, methodID: .init(level: 3, index: 2), arguments: ["name": "VaultCombination", "includeInherited": false]),
+      session: session
+    )
+    XCTAssertEqual(combination.status, .parameterError)
+  }
+
   // MARK: Invocation
+
+  @OcaDevice
+  func testHiddenElementsCanStillBeUsed() async throws {
+    let id = NcElementID(level: 3, index: 2).json
+    let combination = await invoke(MethodFixture.bankVault, 1, 1, ["id": id])
+    XCTAssertEqual(combination.status, .ok, combination.errorMessage ?? "")
+    XCTAssertEqual(combination.value, ["First": 4, "Second": 2])
+    let set = await invoke(MethodFixture.vault, 1, 2, ["id": id, "value": ["First": 7, "Second": 1]])
+    XCTAssertEqual(set.status, .ok, set.errorMessage ?? "")
+    XCTAssertEqual(MethodFixture.vault.combination, VaultCombination(first: 7, second: 1))
+    let openings = await invoke(MethodFixture.bankVault, 3, 4)
+    XCTAssertEqual(openings.status, .ok, openings.errorMessage ?? "")
+    XCTAssertEqual(openings.value, 9)
+  }
 
   @OcaDevice
   func testAWorkerMethodRoundTripsThroughTheDevice() async throws {

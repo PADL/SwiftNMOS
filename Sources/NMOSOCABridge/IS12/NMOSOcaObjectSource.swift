@@ -333,7 +333,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     let controlClass = classes.controlClass(of: entry.object, role: entry.role)
     var constraints = [NMOSJSONValue]()
     let properties = controlClass.properties.sorted { ($0.key.level, $0.key.index) < ($1.key.level, $1.key.index) }
-    for (id, binding) in properties {
+    for (id, binding) in properties where !binding.isHidden {
       // a bounded property's getter names its value, then its lower and upper bounds
       guard case let .property(description, schema?, .none) = binding.value,
             description.flags.contains(.bounded), schema.isNumber, let getter = description.getMethodID
@@ -381,6 +381,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       }
     } else if let binding = controlClass.properties[property] {
       result = await write(binding, of: entry.object, value, as: controller)
+      // nothing is notified of a hidden property
+      if binding.isHidden { return result }
     } else {
       return .error(.propertyNotImplemented, "No property \(property.level)p\(property.index)")
     }
@@ -398,10 +400,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     of object: SwiftOCADevice.OcaRoot,
     as controller: NMOSOcaControlController
   ) async -> NcMethodResult {
-    let description: OcaDevicePropertyDescriptor
-    switch binding.value {
-    case let .property(property, _, _), let .component(property, _, _): description = property
-    }
+    let description = binding.description
     guard let getter = description.getMethodID else {
       return .error(.propertyNotImplemented, "\(description.name) cannot be read")
     }
@@ -554,7 +553,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// The datatypes of the classes described so far, which `classes()`, asked first, has
   /// described every object for.
   public func datatypes() async -> [NcDatatypeDescriptor] {
-    classes.datatypes.descriptors
+    classes.datatypeDescriptors
   }
 
   /// A class manager publishes the classes of every object in the model, so each has
