@@ -58,8 +58,8 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
   /// What each stream of `connectionChanges()` last knew of each endpoint's connection.
   /// An activation updates it too, as the caller records what it reads back: otherwise a
   /// change back to what a stream last read would go unreported.
-  private var baselines = [UInt64: [Key: NMOSConnectionState]]()
-  private var nextBaseline: UInt64 = 0
+  private var generations = [UInt64: [Key: NMOSConnectionState]]()
+  private var nextGeneration: UInt64 = 0
 
   private let walker: NMOSOcaEndpointWalker
   private let adaptations: NMOSOcaAdaptations
@@ -218,7 +218,7 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
     // the endpoint that was found is a copy from before the change
     let active = try await adaptation.active(of: endpoint.refreshed)
     let key = Key(kind: kind, id: id)
-    for stream in baselines.keys { baselines[stream]?[key] = active }
+    for stream in generations.keys { generations[stream]?[key] = active }
     return active
   }
 
@@ -234,24 +234,24 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
   /// Reports every endpoint whose connection differs from when it was last looked at,
   /// each time something the connections are read from changes.
   private func observe(_ continuation: AsyncStream<(kind: NMOSResourceKind, id: NMOSID)>.Continuation) async {
-    let stream = nextBaseline
-    nextBaseline += 1
-    baselines[stream] = [:]
-    defer { baselines[stream] = nil }
+    let stream = nextGeneration
+    nextGeneration += 1
+    generations[stream] = [:]
+    defer { generations[stream] = nil }
     for await _ in changes() {
-      let before = baselines[stream] ?? [:]
+      let before = generations[stream] ?? [:]
       var current = [Key: NMOSConnectionState]()
       for (key, endpoint, adaptation) in await connectable {
         current[key] = try? await adaptation.active(of: endpoint)
       }
-      let known = baselines[stream] ?? [:]
+      let known = generations[stream] ?? [:]
       for key in Set(known.keys).union(current.keys) where known[key] != current[key] {
         continuation.yield((key.kind, key.id))
       }
       // an activation made while the endpoints were read may be newer than the read
       var next = current
       for (key, state) in known where before[key] != state { next[key] = state }
-      baselines[stream] = next
+      generations[stream] = next
     }
     continuation.finish()
   }
