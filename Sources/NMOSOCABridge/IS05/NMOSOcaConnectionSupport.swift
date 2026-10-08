@@ -74,7 +74,7 @@ extension NMOSOcaEndpoint {
       for assignment in application.networkInterfaceAssignments {
         guard let interface: SwiftOCADevice.OcaNetworkInterface =
           await application.deviceDelegate?.resolve(objectNumber: assignment.networkInterfaceONo),
-          let settings = try? interface.currentAdaptationData.decode(OcaIP4NetworkSettings.self),
+          let settings = try? interface.activeNetworkSettings.decode(OcaIP4NetworkSettings.self),
           let address = settings.addressAndPrefix.split(separator: "/").first, !address.isEmpty
         else { continue }
         addresses.append(String(address))
