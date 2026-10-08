@@ -134,7 +134,7 @@ public struct MediaStreamSDP: Sendable, Equatable {
       encodingType: "audio/\(encodingName)",
       samplingRate: OcaFrequency(sampleRate),
       channelCount: channelCount,
-      packetTime: packetTime
+      packetTime: OcaTimeInterval(packetTime)
     )
   }
 

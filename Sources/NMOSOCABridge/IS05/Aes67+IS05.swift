@@ -221,7 +221,7 @@ extension NMOSOcaRTPAdaptation: NMOSOcaConnecting {
       sampleSize: sampleSize,
       sampleRate: UInt32(exactly: mode.samplingRate.rounded()).flatMap { $0 > 0 ? $0 : nil } ?? 48000,
       channelCount: mode.channelCount > 0 ? mode.channelCount : 2,
-      packetTime: mode.packetTime > 0 && mode.packetTime.isFinite ? mode.packetTime : 1e-3,
+      packetTime: mode.packetTime > 0 && mode.packetTime.isFinite ? TimeInterval(mode.packetTime) : 1e-3,
       direction: .receiveOnly
     )
   }
