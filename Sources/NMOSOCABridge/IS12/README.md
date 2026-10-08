@@ -23,7 +23,7 @@ applied to the class IDs above. It holds for properties and methods alike.
 ## The class manager
 
 AES70 has no class manager; SwiftOCADevice gives every device one, `OcaDevice.classManager`
-(PADL's class `1.3.<PADL>.1`, object number 4095, the last AES70 reserves). It is
+(PADL's class `1.3.<PADL>.1`, object number 99, `OcaClassManagerONo`). It is
 registered with the device like any manager, so it is listed in the device manager's
 `Managers`, which the root block's members include. To an OCA controller it describes
 the classes of the device's objects in OCA's terms (`GetControlClass`,

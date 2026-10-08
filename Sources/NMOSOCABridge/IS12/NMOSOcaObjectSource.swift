@@ -95,7 +95,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   private let device: OcaDevice
   private let mapping: NMOSOcaControlMapping
   /// The oid the class manager is presented under.
-  nonisolated var classManagerOid: NcOid { mapping.oid(of: SwiftOCA.OcaClassManager.objectNumber) }
+  nonisolated var classManagerOid: NcOid { mapping.oid(of: OcaClassManagerONo) }
   private let adaptations: NMOSOcaAdaptations
   private let classes: NMOSOcaControlClasses
   private let labels: any NMOSOcaLabelStore
