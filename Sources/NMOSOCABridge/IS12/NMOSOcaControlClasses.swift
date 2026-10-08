@@ -105,7 +105,7 @@ final class NMOSOcaControlClasses {
   }
 
   /// How the elements of an object's class are served, gathered over its lineage.
-  private struct Presentation {
+  private struct Bindings {
     var properties = [NcElementID: NMOSOcaPropertyBinding]()
     var methods = [NcElementID: NMOSOcaMethodBinding]()
     var standardIDs = [OcaPropertyID: NcElementID]()
@@ -115,7 +115,7 @@ final class NMOSOcaControlClasses {
 
   /// One OCA class of a lineage as a non-standard class: its descriptor, and how the
   /// elements it presents are served.
-  private struct ClassPresentation {
+  private struct ClassBindings {
     var descriptor: NcClassDescriptor
     var properties = [NcElementID: NMOSOcaPropertyBinding]()
     var methods = [NcElementID: NMOSOcaMethodBinding]()
@@ -140,15 +140,15 @@ final class NMOSOcaControlClasses {
       lineage.flatMap(\.properties).map { ($0.propertyID, $0) }, uniquingKeysWith: { first, _ in first }
     )
 
-    var presentation = Presentation()
-    presentStandardProperties(of: anchored.map(\.anchor), under: anchor, declared, into: &presentation)
+    var bindings = Bindings()
+    presentStandardProperties(of: anchored.map(\.anchor), under: anchor, declared, into: &bindings)
     let label = userLabel(in: declared)
     if let label {
-      presentation.consumed.insert(label.propertyID)
-      presentation.standardIDs[label.propertyID] = .userLabel
+      bindings.consumed.insert(label.propertyID)
+      bindings.standardIDs[label.propertyID] = .userLabel
     }
     // NcObject states an object's owner from where it is found, not from what it says
-    presentation.consumed.formUnion(declared.values.filter { $0.flags.contains(.owner) }.map(\.propertyID))
+    bindings.consumed.formUnion(declared.values.filter { $0.flags.contains(.owner) }.map(\.propertyID))
 
     // what the OCA classes have beyond that, one non-standard class per OCA class
     var descriptors = [NcClassDescriptor]()
@@ -161,14 +161,14 @@ final class NMOSOcaControlClasses {
       // a class's level is its depth by its ID, as OCA has it too
       let level = ocaClass.classID.ncLevel(under: anchor.nc)
       let described = describe(
-        ocaClass: ocaClass, at: level, under: anchor, consumed: presentation.consumed
+        ocaClass: ocaClass, at: level, under: anchor, consumed: bindings.consumed
       )
-      presentation.properties.merge(described.properties) { _, new in new }
-      presentation.methods.merge(described.methods) { _, new in new }
-      presentation.standardIDs.merge(described.standardIDs) { _, new in new }
+      bindings.properties.merge(described.properties) { _, new in new }
+      bindings.methods.merge(described.methods) { _, new in new }
+      bindings.standardIDs.merge(described.standardIDs) { _, new in new }
       descriptors.append(described.descriptor)
     }
-    return controlClass(anchor, descriptors, presentation, label: label, role: role)
+    return controlClass(anchor, descriptors, bindings, label: label, role: role)
   }
 
   /// The classes of the lineage that have a standard counterpart, with their depth.
@@ -183,7 +183,7 @@ final class NMOSOcaControlClasses {
     of anchors: [NMOSOcaControlMapping.Anchor],
     under anchor: NMOSOcaControlMapping.Anchor,
     _ declared: [OcaPropertyID: OcaDevicePropertyDescriptor],
-    into presentation: inout Presentation
+    into bindings: inout Bindings
   ) {
     // which standard properties are read only is the object model's to enforce
     for inherited in anchors where anchor.nc.starts(with: inherited.nc) {
@@ -191,15 +191,15 @@ final class NMOSOcaControlClasses {
         switch property.source {
         case let .members(id):
           // the object model lists the members; a change to them is still notified
-          presentation.consumed.insert(id)
-          presentation.standardIDs[id] = property.id
+          bindings.consumed.insert(id)
+          bindings.standardIDs[id] = property.id
         case let .property(id):
           // an object without the OCA property does without the standard one
           guard let description = declared[id], description.getMethodID != nil else { continue }
-          presentation.consumed.insert(id)
-          presentation.standardIDs[id] = property.id
+          bindings.consumed.insert(id)
+          bindings.standardIDs[id] = property.id
           let ncForm = description.valueType as? any NMOSOcaNcValue.Type
-          presentation.properties[property.id] = NMOSOcaPropertyBinding(
+          bindings.properties[property.id] = NMOSOcaPropertyBinding(
             value: .property(description, try? datatypes.schema(of: description.valueType), ncForm),
             isReadOnly: !description.isSettable || ncForm != nil
           )
@@ -221,8 +221,8 @@ final class NMOSOcaControlClasses {
     at level: UInt16,
     under anchor: NMOSOcaControlMapping.Anchor,
     consumed: Set<OcaPropertyID>
-  ) -> ClassPresentation {
-    var described = ClassPresentation(descriptor: NcClassDescriptor(
+  ) -> ClassBindings {
+    var described = ClassBindings(descriptor: NcClassDescriptor(
       classID: anchor.nc + [mapping.authorityKey] + ocaClass.classID.ncIndices,
       name: ocaClass.type.className
     ))
@@ -238,7 +238,7 @@ final class NMOSOcaControlClasses {
   private func present(
     _ property: OcaDevicePropertyDescriptor,
     at level: UInt16,
-    into described: inout ClassPresentation
+    into described: inout ClassBindings
   ) {
     let className = described.descriptor.name
     guard property.getMethodID != nil else {
@@ -287,7 +287,7 @@ final class NMOSOcaControlClasses {
     of ocaClass: OcaDeviceClassDescriptor,
     at level: UInt16,
     under anchor: NMOSOcaControlMapping.Anchor,
-    into described: inout ClassPresentation
+    into described: inout ClassBindings
   ) {
     let className = described.descriptor.name
     for method in candidates(in: ocaClass) {
@@ -345,14 +345,14 @@ final class NMOSOcaControlClasses {
   private func controlClass(
     _ anchor: NMOSOcaControlMapping.Anchor,
     _ descriptors: [NcClassDescriptor],
-    _ presentation: Presentation,
+    _ bindings: Bindings,
     label: OcaDevicePropertyDescriptor?,
     role: String
   ) -> NMOSOcaControlClass {
     guard Self.isPresentedAsDerivedClass(under: anchor.nc, descriptors), var leaf = descriptors.last else {
       return NMOSOcaControlClass(
-        classID: anchor.nc, properties: presentation.properties, methods: presentation.methods,
-        standardIDs: presentation.standardIDs, label: label, descriptors: []
+        classID: anchor.nc, properties: bindings.properties, methods: bindings.methods,
+        standardIDs: bindings.standardIDs, label: label, descriptors: []
       )
     }
     var descriptors = descriptors
@@ -362,8 +362,8 @@ final class NMOSOcaControlClasses {
       descriptors[descriptors.count - 1] = leaf
     }
     return NMOSOcaControlClass(
-      classID: leaf.classID, properties: presentation.properties, methods: presentation.methods,
-      standardIDs: presentation.standardIDs, label: label, descriptors: descriptors
+      classID: leaf.classID, properties: bindings.properties, methods: bindings.methods,
+      standardIDs: bindings.standardIDs, label: label, descriptors: descriptors
     )
   }
 
