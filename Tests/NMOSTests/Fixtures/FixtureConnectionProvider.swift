@@ -41,7 +41,7 @@ final class FixtureConnectionProvider: NMOSConnectionProvider {
   }
 
   private let state = Mutex(State())
-  private let changes = AsyncStream<(kind: NMOSResourceKind, id: NMOSID)>.makeStream()
+  private let changes = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
 
   func add(_ endpoint: Endpoint, id: NMOSID) {
     state.withLock { $0.endpoints[id] = endpoint }
@@ -74,11 +74,8 @@ final class FixtureConnectionProvider: NMOSConnectionProvider {
 
   /// Changes an endpoint as another control protocol would, behind the API's back.
   func changeExternally(_ id: NMOSID, to active: NMOSConnectionState) {
-    let kind = state.withLock { state -> NMOSResourceKind? in
-      state.endpoints[id]?.active = active
-      return state.endpoints[id]?.kind
-    }
-    if let kind { changes.continuation.yield((kind, id)) }
+    state.withLock { $0.endpoints[id]?.active = active }
+    changes.continuation.yield()
   }
 
   private func endpoint(_ kind: NMOSResourceKind, _ id: NMOSID) throws -> Endpoint {
@@ -138,7 +135,7 @@ final class FixtureConnectionProvider: NMOSConnectionProvider {
     }
   }
 
-  func connectionChanges() -> AsyncStream<(kind: NMOSResourceKind, id: NMOSID)> {
+  func connectionChanges() -> AsyncStream<Void> {
     changes.stream
   }
 }

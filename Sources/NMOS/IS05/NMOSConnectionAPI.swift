@@ -455,15 +455,15 @@ public actor NMOSConnectionAPI {
 
   // MARK: - Changes made elsewhere
 
-  /// Observes changes the provider reports, so that `/active` and IS-04 show what the
+  /// Observes changes the provider signals, so that `/active` and IS-04 show what the
   /// device is doing however it came to be doing it. Runs until the task is cancelled.
   public func run() async {
     await store.manageSubscriptions()
     let resources = await store.changes()
     await withTaskGroup(of: Void.self) { group in
       group.addTask {
-        for await change in self.provider.connectionChanges() {
-          await self.observe(Key(kind: change.kind, id: change.id))
+        for await _ in self.provider.connectionChanges() {
+          await self.observeAll()
         }
       }
       group.addTask {
@@ -471,59 +471,66 @@ public actor NMOSConnectionAPI {
         // connected to, so each one is given its `subscription` when it appears
         for kind in [NMOSResourceKind.sender, .receiver] {
           for resource in await self.store.resources(kind) {
-            await self.adopt(Key(kind: kind, id: resource.id))
+            await self.observe(Key(kind: kind, id: resource.id))
           }
         }
         for await change in resources where change.change == .added {
           guard change.kind == .sender || change.kind == .receiver else { continue }
-          await self.adopt(Key(kind: change.kind, id: change.id))
+          await self.observe(Key(kind: change.kind, id: change.id))
         }
       }
     }
   }
 
-  /// Gives a resource that has just appeared the `subscription` its endpoint has now.
-  private func adopt(_ key: Key) async {
-    await lock(key)
-    defer { unlock(key) }
-    guard let active = try? await provider.active(key.kind, id: key.id) else { return }
-    var peer = active.peerID
-    if peer == nil, let activated = entries[key]?.activated, Self.agrees(active, with: activated) {
-      peer = activated.asked.peerID
+  /// Every endpoint the provider has, and every one known here, which may have gone.
+  private func observeAll() async {
+    var keys = Set(entries.keys)
+    for kind in [NMOSResourceKind.sender, .receiver] {
+      for id in await provider.connections(kind) {
+        keys.insert(Key(kind: kind, id: id))
+      }
     }
-    await store.setSubscription(key.kind, id: key.id, active: active.masterEnable, peer: peer)
+    for key in keys {
+      await observe(key)
+    }
   }
 
+  /// Records what the endpoint is doing now, and gives its resource the `subscription`
+  /// that goes with it, with a new version if it changed.
   private func observe(_ key: Key) async {
     await lock(key)
     defer { unlock(key) }
-    guard let active = try? await provider.active(key.kind, id: key.id) else {
+    let active: NMOSConnectionState
+    do {
+      active = try await provider.active(key.kind, id: key.id)
+    } catch NMOSConnectionError.notFound {
       // the endpoint has gone, and with it anything staged or scheduled for it
       entries[key]?.timer?.cancel()
       entries[key] = nil
       return
-    }
-    guard var entry = entries[key] else {
-      entries[key] = Entry(staged: Self.staged(from: active, key.kind), lastActive: active)
-      await store.setSubscription(key.kind, id: key.id, active: active.masterEnable, peer: active.peerID)
+    } catch {
       return
     }
-    guard entry.lastActive != active else { return }
-    entry.lastActive = active
-    if let activated = entry.activated, Self.agrees(active, with: activated) {
-      // still what this API activated; only values the endpoint chose have moved
-    } else {
-      entry.activated = nil
-      entry.activeActivation = NMOSActivation(mode: .immediate, activationTime: now())
-      if entry.stagedActivation.mode == nil {
-        entry.staged = Self.staged(from: active, key.kind)
+    var entry = entries[key] ?? Entry(staged: Self.staged(from: active, key.kind), lastActive: active)
+    let changed = entry.lastActive != active
+    if changed {
+      entry.lastActive = active
+      if let activated = entry.activated, Self.agrees(active, with: activated) {
+        // still what this API activated; only values the endpoint chose have moved
+      } else {
+        entry.activated = nil
+        entry.activeActivation = NMOSActivation(mode: .immediate, activationTime: now())
+        if entry.stagedActivation.mode == nil {
+          entry.staged = Self.staged(from: active, key.kind)
+        }
       }
     }
     entries[key] = entry
-    await store.setSubscription(
-      key.kind, id: key.id, active: active.masterEnable, peer: active.peerID ?? entry.activated?.asked.peerID,
-      touch: true
-    )
+    var peer = active.peerID
+    if peer == nil, let activated = entry.activated, Self.agrees(active, with: activated) {
+      peer = activated.asked.peerID
+    }
+    await store.setSubscription(key.kind, id: key.id, active: active.masterEnable, peer: peer, touch: changed)
   }
 
   // MARK: - Serialising work on an endpoint

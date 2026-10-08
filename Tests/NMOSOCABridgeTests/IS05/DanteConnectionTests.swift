@@ -89,32 +89,34 @@ final class DanteConnectionTests: XCTestCase {
   }
 
   /// A transmit channel is subscribed to by the device's name, so renaming the device
-  /// changes its connection: the device manager is watched, and the sender reported.
+  /// changes its connection: the device manager is watched, and a change signalled.
   @OcaDevice
   func testRenamingTheDeviceChangesATransmitChannelsConnection() async throws {
     let (application, stack) = try await makeStack()
     let sender = stack.id(application, 1001)
-    let reported = Mutex([NMOSID]())
+    let signals = Mutex(0)
     let changes = stack.provider.connectionChanges()
     let task = Task {
-      for await change in changes { reported.withLock { $0.append(change.id) } }
+      for await _ in changes { signals.withLock { $0 += 1 } }
     }
     defer { task.cancel() }
-    func reports() -> Int { reported.withLock { $0.filter { $0 == sender }.count } }
+    func count() -> Int { signals.withLock { $0 } }
 
-    for _ in 0..<300 where reports() == 0 {
+    for _ in 0..<300 where count() == 0 {
       try await Task.sleep(for: .milliseconds(10))
     }
     try await Task.sleep(for: .milliseconds(100))
-    let before = reports()
+    let before = count()
     XCTAssertGreaterThan(before, 0)
     let deviceManager = await OcaDevice.shared.deviceManager
     deviceManager?.deviceName = "MonitorTwo-Renamed"
     defer { deviceManager?.deviceName = "MonitorTwo-0A1B" }
-    for _ in 0..<300 where reports() == before {
+    for _ in 0..<300 where count() == before {
       try await Task.sleep(for: .milliseconds(10))
     }
-    XCTAssertEqual(reports(), before + 1)
+    XCTAssertGreaterThan(count(), before)
+    let active = try await stack.send(.GET, "senders/\(sender)/active")
+    XCTAssertEqual(active.json?["transport_params"], [["device_name": "MonitorTwo-Renamed", "channel_name": "Left"]])
   }
 
   @OcaDevice

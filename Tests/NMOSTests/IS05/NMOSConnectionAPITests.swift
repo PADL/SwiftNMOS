@@ -682,6 +682,41 @@ final class NMOSConnectionAPITests: XCTestCase {
     XCTAssertEqual(after?.0, .init(senderID: nil, active: true))
   }
 
+  func testASignalWhenNothingChangedChangesNothing() async throws {
+    let path = "v1.2/single/receivers/\(receiver)"
+    _ = try await send(.PATCH, "\(path)/staged", [
+      "sender_id": .string(peer.description), "master_enable": true, "activation": ["mode": "activate_immediate"],
+    ])
+    let scheduled = try await send(.PATCH, "\(path)/staged", [
+      "master_enable": false, "activation": ["mode": "activate_scheduled_relative", "requested_time": "60:0"],
+    ])
+    XCTAssertEqual(scheduled.status, .accepted)
+    let subscription = await receiverSubscription()
+    let active = try await send(.GET, "\(path)/active")
+    let staged = try await send(.GET, "\(path)/staged")
+
+    // the receiver is signalled as it is; a change to the sender then shows the signal was read
+    try provider.changeExternally(receiver, to: await provider.active(.receiver, id: receiver))
+    func senderVersion() async -> NMOSTimestamp? { await store.senders.first { $0.id == sender }?.version }
+    let senderBefore = await senderVersion()
+    var moved = Self.senderParameters
+    moved["destination_ip"] = "232.105.26.178"
+    provider.changeExternally(sender, to: .init(masterEnable: true, transportParameters: [moved]))
+    for _ in 0..<200 where await senderVersion() == senderBefore {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    let senderAfter = await senderVersion()
+    XCTAssertNotEqual(senderAfter, senderBefore)
+
+    let subscriptionAfter = await receiverSubscription()
+    XCTAssertEqual(subscriptionAfter?.0, subscription?.0)
+    XCTAssertEqual(subscriptionAfter?.1, subscription?.1)
+    let activeAfter = try await send(.GET, "\(path)/active")
+    XCTAssertEqual(activeAfter.json, active.json)
+    let stagedAfter = try await send(.GET, "\(path)/staged")
+    XCTAssertEqual(stagedAfter.json, staged.json)
+  }
+
   func testAProviderReportingTheAPIsOwnActivationDoesNotForgetThePeer() async throws {
     _ = try await send(.PATCH, "v1.2/single/receivers/\(receiver)/staged", [
       "sender_id": .string(peer.description), "master_enable": true,

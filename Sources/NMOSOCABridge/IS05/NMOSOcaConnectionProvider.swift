@@ -53,7 +53,6 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
   private var claims: Claims?
   /// Counts invalidations, so that claims decided across one are not kept.
   private var generation: UInt64 = 0
-  private var invalidator: Task<Void, Never>?
 
   private let walker: NMOSOcaEndpointWalker
   private let adaptations: NMOSOcaAdaptations
@@ -76,10 +75,6 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
     walker = NMOSOcaEndpointWalker(device: device, adaptations: adaptations)
   }
 
-  deinit {
-    invalidator?.cancel()
-  }
-
   /// The endpoints and their statuses, and the session agents observed below.
   static let observedProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaMediaTransportApplication.self, [
     .init(defLevel: 3, propertyIndex: 10), // endpoints
@@ -89,11 +84,10 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
 
   // MARK: - Finding endpoints
 
-  /// The claims on the device's endpoints, decided again only when something they were
-  /// decided from has changed. Every call of the Connection API comes through here, and
-  /// one request makes several.
+  /// The claims on the device's endpoints, decided again at each signal of
+  /// `connectionChanges()`, when an endpoint is not found, or once they are too old.
+  /// Every call of the Connection API comes through here, and one request makes several.
   private func claimed() async -> [Key: Claim] {
-    startInvalidator()
     guard let ids = await ids() else { return [:] }
     if let claims, claims.ids == ids, claims.made.duration(to: .now) < Self.maximumClaimAge {
       return claims.claims
@@ -115,18 +109,6 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
   private func invalidate() {
     claims = nil
     generation &+= 1
-  }
-
-  /// Observes the applications from the first use on, forgetting the claims at each change.
-  private func startInvalidator() {
-    guard invalidator == nil else { return }
-    let changes = walker.changes()
-    invalidator = Task { @OcaDevice [weak self] in
-      for await _ in changes {
-        guard let self else { return }
-        self.invalidate()
-      }
-    }
   }
 
   /// The endpoint a claim is on, as its application has it now.
@@ -207,26 +189,19 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
 
   // MARK: - Changes
 
-  public nonisolated func connectionChanges() -> AsyncStream<(kind: NMOSResourceKind, id: NMOSID)> {
-    AsyncStream { continuation in
-      let task = Task { @OcaDevice in await self.observe(continuation) }
-      continuation.onTermination = { _ in task.cancel() }
-    }
-  }
-
-  /// Reports every endpoint, and every one that has gone, each time something the
-  /// connections are read from changes. The caller compares each with what it last
-  /// recorded, activations included, which a comparison here could not know of.
-  private func observe(_ continuation: AsyncStream<(kind: NMOSResourceKind, id: NMOSID)>.Continuation) async {
-    var reported = Set<Key>()
-    for await _ in changes() {
-      let current = Set(await claimed().filter { endpoint(of: $0.value) != nil }.keys)
-      for key in reported.union(current) {
-        continuation.yield((key.kind, key.id))
+  public nonisolated func connectionChanges() -> AsyncStream<Void> {
+    let (stream, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    let changes = changes()
+    let task = Task { @OcaDevice [weak self] in
+      for await _ in changes {
+        // the claims were decided from what has just changed
+        self?.invalidate()
+        continuation.yield()
       }
-      reported = current
+      continuation.finish()
     }
-    continuation.finish()
+    continuation.onTermination = { _ in task.cancel() }
+    return stream
   }
 
   /// The objects connections are read from that the walker does not observe: the device

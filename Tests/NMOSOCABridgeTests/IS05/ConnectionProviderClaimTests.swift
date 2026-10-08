@@ -135,7 +135,7 @@ final class ConnectionProviderClaimTests: XCTestCase {
   }
 
   @OcaDevice
-  func testAProviderThatGoesAwayStopsObservingTheApplications() async throws {
+  func testAChangeStreamThatEndsStopsObservingTheApplications() async throws {
     let manager = try await TestDevice.networkManager()
     manager.networkApplications = try await [TestDevice.makeApplication("Observed")]
     var counting: CountingAdaptation? = CountingAdaptation()
@@ -144,12 +144,14 @@ final class ConnectionProviderClaimTests: XCTestCase {
       adaptations: NMOSOcaAdaptations([XCTUnwrap(counting)])
     ) { ConnectionStack.ids }
     counting = nil
-    // the first use starts observing the applications, with the adaptations' reads
-    _ = await provider?.connections(.receiver)
+    // reading the changes observes the applications, with the adaptations' reads
+    let changes = try XCTUnwrap(provider).connectionChanges()
+    let reader = Task { for await _ in changes {} }
     try await Task.sleep(for: .milliseconds(100))
     XCTAssertGreaterThan(adaptation?.readsAsked ?? 0, 0)
 
     // whatever observes them holds the adaptations, so they go once nothing does
+    reader.cancel()
     provider = nil
     for _ in 0..<100 where adaptation != nil {
       try await Task.sleep(for: .milliseconds(10))

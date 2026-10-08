@@ -46,8 +46,8 @@ final class FixtureTests: XCTestCase {
 
     provider.changeExternally(receiver, to: idle)
     var changes = provider.connectionChanges().makeAsyncIterator()
-    let change = await changes.next()
-    XCTAssertEqual(change?.id, receiver)
+    let signal: Void? = await changes.next()
+    XCTAssertNotNil(signal)
     let current = try await provider.active(.receiver, id: receiver)
     XCTAssertEqual(current, idle)
   }

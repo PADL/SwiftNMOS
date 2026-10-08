@@ -138,10 +138,11 @@ public protocol NMOSConnectionProvider: Sendable {
     staged: NMOSConnectionState
   ) async throws -> NMOSConnectionState
 
-  /// The endpoints whose active state may have changed other than through `activate`,
-  /// for example because another control protocol patched them. An endpoint may be
-  /// reported when nothing changed: the caller reads it again and compares.
-  func connectionChanges() -> AsyncStream<(kind: NMOSResourceKind, id: NMOSID)>
+  /// Signals that an endpoint's active state may have changed other than through
+  /// `activate`, for example because another control protocol patched it. The caller
+  /// reads every endpoint again and compares, so a signal may come when nothing changed,
+  /// and signals not yet read may be merged into one.
+  func connectionChanges() -> AsyncStream<Void>
 }
 
 public extension NMOSConnectionProvider {
