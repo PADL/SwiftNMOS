@@ -315,7 +315,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     XCTAssertTrue(managerClass.starts(with: NcStandardModel.deviceManager))
 
     let classManager = try XCTUnwrap(members.first { $0["role"] == "ClassManager" })
-    XCTAssertEqual(classManager["oid"], .integer(Int64(OcaMaximumReservedONo)))
+    XCTAssertEqual(classManager["oid"], .integer(Int64(OcaClassManagerONo)))
     // OcaClassManager's methods are NcClassManager's own, so it is presented as that class
     XCTAssertEqual(classManager["classId"], NcStandardModel.classManager.json)
     // every other OCA manager is in the root block too
