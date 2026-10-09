@@ -255,7 +255,7 @@ final class NMOSOcaControlClasses {
       {
         schema = try datatypes.schema(of: componentType)
         components = [(names.x, property.propertyID, "x"), (names.y, yPropertyID, "y")].map { name, id, field in
-          (name, id, .component(property, field: Ocp2Encoder.fieldName(field), schema))
+          (name, id, .component(property, field: Ocp2Naming.wireName(field), schema))
         }
       } else {
         schema = try datatypes.schema(of: property.valueType)

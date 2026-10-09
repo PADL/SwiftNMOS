@@ -145,13 +145,13 @@ final class NMOSOcaDatatypes {
     case .bounded, .structure:
       // a structure is coded as its stored properties; one coded otherwise is a base type
       // above, or has a field MS-05-02 cannot describe
-      let fields = Ocp2Encoder.fields(of: type)
+      let fields = Ocp2Naming.fields(of: type)
       guard !fields.isEmpty else {
         throw NMOSOcaUnsupportedType(type, "not a structure of named fields")
       }
       let name = try name(for: type)
       try define(structure: name, fields: fields.map { field in
-        try (Ocp2Encoder.fieldName(field.name), schema(of: field.type))
+        try (Ocp2Naming.wireName(field.name), schema(of: field.type))
       })
       return .structure(name)
     case .other:
