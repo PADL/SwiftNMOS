@@ -139,9 +139,24 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   // MARK: - The tree
 
+  /// MS-05-02 has a class manager, which IS-12 presents the device's as; a device that
+  /// has not made one gets one the first time the bridge looks at the tree.
+  private var classManagerMade = false
+  private func makeClassManagerIfMissing() async {
+    guard !classManagerMade else { return }
+    classManagerMade = true
+    guard await device.classManager == nil else { return }
+    do {
+      _ = try await SwiftOCADevice.OcaClassManager(deviceDelegate: device)
+    } catch {
+      logger.error("not presenting a class manager: the device refused one: \(error)")
+    }
+  }
+
   /// The object an oid stands for, looked up in the device as it is now: the tree is
   /// OCA's, and nothing of it is kept here.
   private func entry(_ oid: NcOid) async -> Entry? {
+    await makeClassManagerIfMissing()
     guard let root = await device.rootBlock,
           let object = await device.objects[mapping.objectNumber(of: oid)]
     else { return nil }
