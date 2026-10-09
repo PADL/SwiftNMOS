@@ -24,7 +24,7 @@ applied to the class IDs above. It holds for properties and methods alike.
 
 AES70 has no class manager; SwiftOCADevice has one a device opts into, `OcaDevice.classManager`
 (PADL's class `1.3.<PADL>.1`, object number 99, `OcaClassManagerONo`), and the bridge makes
-one for a device that has none when it first looks at the tree, since MS-05-02 requires one.
+one for a device that has none as it starts, since MS-05-02 requires one.
 It is registered with the device like any manager, so it is listed in the device manager's
 `Managers`, which the root block's members include. To an OCA controller it describes
 the classes of the device's objects in OCA's terms (`GetControlClass`,

@@ -127,6 +127,9 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     self.logger = logger
     self.resourceIDs = resourceIDs
     classes = NMOSOcaControlClasses(mapping: mapping, logger: logger)
+    // MS-05-02 has a class manager, which IS-12 presents the device's as; a device that
+    // has not made one gets one as the bridge starts
+    Task { @OcaDevice [self] in await self.makeClassManagerIfMissing() }
   }
 
   /// The device holds the endpoint, and through it every subscription of the sessions'
@@ -139,8 +142,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   // MARK: - The tree
 
-  /// MS-05-02 has a class manager, which IS-12 presents the device's as; a device that
-  /// has not made one gets one the first time the bridge looks at the tree.
+  /// Made as the bridge starts; looking at the tree first makes sure, should a request
+  /// come before that has run.
   private var classManagerMade = false
   private func makeClassManagerIfMissing() async {
     guard !classManagerMade else { return }
