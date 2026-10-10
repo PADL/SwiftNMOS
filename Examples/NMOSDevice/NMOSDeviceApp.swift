@@ -105,8 +105,6 @@ private enum NMOSDeviceApp {
   private static func makeDevice(on host: HostInterface, options: Options) async throws {
     let device = OcaDevice.shared
     try await device.initializeDefaultObjects()
-    // describes the device's classes to OCA controllers; the IS-12 bridge would make one anyway
-    _ = try await OcaClassManager(deviceDelegate: device)
     // a Dante transmitter is subscribed to by device name, which allows no dots
     let name = String(ProcessInfo.processInfo.hostName.prefix { $0 != "." }.prefix(31))
     let deviceManager = await device.deviceManager
