@@ -89,10 +89,11 @@ final class NMOSOcaIdleLoadTests: XCTestCase {
     XCTAssertEqual(resources, 130)
     let before = (described: described.withLock { $0 }, read: read.withLock { $0 })
 
-    // an idle entity's reports: counters, and status and availability that have not changed
-    for _ in 1...10 {
+    // an idle entity's reports: counters, and status and availability, which NMOS does
+    // not read, whether or not they changed
+    for report in 1...10 {
       milan.endpointCounterSets = [1: OcaCounterSet(), 2: OcaCounterSet()]
-      milan.endpointStatuses = milan.endpointStatuses
+      milan.endpointStatuses[1] = .init(state: report % 2 == 0 ? .connected : .notReady)
       milan.counterSet = OcaCounterSet()
       interface.counterSet = OcaCounterSet()
       interface.status = interface.status
@@ -104,13 +105,6 @@ final class NMOSOcaIdleLoadTests: XCTestCase {
     XCTAssertEqual(described.withLock { $0 }, before.described, "the device was described again")
     XCTAssertEqual(read.withLock { $0 }, before.read, "a change was reported to the Connection API")
 
-    // a status that does change is one
-    milan.endpointStatuses[1] = .init(state: .notReady)
-    for _ in 0..<300 where read.withLock({ $0 }) == before.read {
-      try await Task.sleep(for: .milliseconds(10))
-    }
-    XCTAssertEqual(read.withLock { $0 }, before.read + 1)
-
     // a change NMOS is told of is still observed
     milan.insert(endpoint: OcaMediaStreamEndpoint(idInternal: 3, direction: .input), status: .init(state: .ready))
     for _ in 0..<300 where await store.receivers.count != 67 {
@@ -118,5 +112,6 @@ final class NMOSOcaIdleLoadTests: XCTestCase {
     }
     let receivers = await store.receivers.count
     XCTAssertEqual(receivers, 67)
+    XCTAssertGreaterThan(read.withLock { $0 }, before.read)
   }
 }

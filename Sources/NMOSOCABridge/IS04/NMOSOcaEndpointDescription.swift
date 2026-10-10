@@ -30,28 +30,6 @@ struct NMOSOcaDescriptionContext {
   let baseURL: String?
 }
 
-public extension NMOSOcaResourceDescribing {
-  /// The interfaces AES70 says the endpoint is assigned to.
-  func interfaceBindings(of endpoint: NMOSOcaEndpoint) async -> [String] {
-    await endpoint.interfaceNames
-  }
-
-  /// An endpoint is active while its connection is enabled, which is IS-05's
-  /// `master_enable`: IS-04 and IS-05 must say the same of it. An adaptation that makes
-  /// no connections has only the endpoint's status to go by.
-  func isActive(_ endpoint: NMOSOcaEndpoint) async -> Bool {
-    if let connecting = self as? any NMOSOcaConnecting {
-      return await (try? connecting.active(of: endpoint).masterEnable) ?? false
-    }
-    return endpoint.status?.state == .connected || endpoint.status?.state == .running
-  }
-
-  /// The encodings of the endpoint's stream mode capabilities.
-  func mediaTypes(of endpoint: NMOSOcaEndpoint) async -> [String] {
-    endpoint.mediaTypes
-  }
-}
-
 extension NMOSOcaEndpoint {
   static let descriptionProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaMediaTransportApplication.self, [
     .init(defLevel: 2, propertyIndex: 1), // label
@@ -132,7 +110,7 @@ extension NMOSOcaBridge {
 
   private func bindings(
     of endpoint: NMOSOcaEndpoint,
-    adaptation: any NMOSOcaResourceDescribing,
+    adaptation: any NMOSOcaTransportAdaptation,
     context: NMOSOcaDescriptionContext
   ) async -> [String] {
     await adaptation.interfaceBindings(of: endpoint).filter(context.interfaces.contains)
@@ -141,7 +119,7 @@ extension NMOSOcaBridge {
   /// A sender with the flow it sends and the source of that flow.
   func senderResources(
     for endpoint: NMOSOcaEndpoint,
-    adaptation: any NMOSOcaResourceDescribing,
+    adaptation: any NMOSOcaTransportAdaptation,
     context: NMOSOcaDescriptionContext
   ) async -> [NMOSResource] {
     let ids = context.ids
@@ -182,7 +160,7 @@ extension NMOSOcaBridge {
 
   func receiverResource(
     for endpoint: NMOSOcaEndpoint,
-    adaptation: any NMOSOcaResourceDescribing,
+    adaptation: any NMOSOcaTransportAdaptation,
     context: NMOSOcaDescriptionContext
   ) async -> NMOSReceiverResource {
     let receiverID = endpoint.id(.receiver, in: context.ids)
@@ -195,7 +173,7 @@ extension NMOSOcaBridge {
       interfaceBindings: bindings(of: endpoint, adaptation: adaptation, context: context),
       // which sender it receives from is the Connection API's to record, in the store
       subscription: .init(active: adaptation.isActive(endpoint)),
-      caps: .init(mediaTypes: adaptation.mediaTypes(of: endpoint))
+      caps: .init(mediaTypes: endpoint.mediaTypes)
     )
   }
 }

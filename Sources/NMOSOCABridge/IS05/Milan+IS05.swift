@@ -22,18 +22,20 @@ import SwiftOCADevice
 /// AVB streams of a Milan entity (AES70-22). A listener stream is bound to a talker
 /// stream, which a talker's entity ID and stream index name, so those two are the
 /// transport parameters: of a receiver the talker it is bound to, of a sender its own.
-extension NMOSOcaMilanAdaptation: NMOSOcaConnecting {
+extension NMOSOcaMilanAdaptation {
   private static let entityID = "entity_id"
   private static let streamIndex = "stream_index"
 
-  public func transportType(of endpoint: NMOSOcaEndpoint) async -> String { NMOSOcaTransport.milan }
-
   // MARK: Reading
 
-  /// A listener's binding is its session, found through the application's agents.
-  public var connectionProperties: NMOSOcaObservedProperties {
-    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 13)])
-      + .of(SwiftOCADevice.OcaMediaTransportSessionAgent.self, [.init(defLevel: 3, propertyIndex: 2)])
+  /// The application and its endpoints say which are claimed; a listener's binding is
+  /// its session, found through the application's agents.
+  public var observedProperties: NMOSOcaObservedProperties {
+    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [
+      .init(defLevel: 2, propertyIndex: 4), // adaptationIdentifier
+      .init(defLevel: 3, propertyIndex: 10), // endpoints
+      .init(defLevel: 3, propertyIndex: 13), // transportSessionControlAgentONos
+    ]) + .of(SwiftOCADevice.OcaMediaTransportSessionAgent.self, [.init(defLevel: 3, propertyIndex: 2)])
   }
 
   /// The session agent holding the session for an input endpoint. AES70-22 gives each

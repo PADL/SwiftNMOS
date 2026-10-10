@@ -91,10 +91,7 @@ final class NMOSOcaEndpointWalkerTests: XCTestCase {
 
     let aes67 = try await TestDevice.makeApplication("AES67")
     aes67.insert(endpoint: OcaMediaStreamEndpoint(idInternal: 1, direction: .input, userLabel: "Rx 1"))
-    aes67.insert(
-      endpoint: OcaMediaStreamEndpoint(idInternal: 1001, direction: .output, userLabel: "Tx 1"),
-      status: .init(state: .running)
-    )
+    aes67.insert(endpoint: OcaMediaStreamEndpoint(idInternal: 1001, direction: .output, userLabel: "Tx 1"))
     let dante = try await TestDevice.makeApplication("Dante")
     dante.insert(endpoint: OcaMediaStreamEndpoint(idInternal: 1, direction: .input))
     manager.networkApplications = [aes67, dante]
@@ -102,7 +99,6 @@ final class NMOSOcaEndpointWalkerTests: XCTestCase {
     let endpoints = await walker.endpoints
     XCTAssertEqual(endpoints.count, 3)
     XCTAssertEqual(endpoints.filter(\.isSender).map(\.endpoint.userLabel), ["Tx 1"])
-    XCTAssertEqual(endpoints.first { $0.isSender }?.status?.state, .running)
     XCTAssertEqual(endpoints.first { $0.isSender }?.kind, .sender)
 
     // the same endpoint number in two applications is two different receivers
@@ -129,7 +125,9 @@ final class NMOSOcaEndpointWalkerTests: XCTestCase {
     let endpoints = await walker.endpoints
     XCTAssertEqual(endpoints.map(\.endpoint.idInternal), [1])
 
-    application.update(endpointID: 1, status: .init(state: .running))
+    var labelled = try application.endpoint(1)
+    labelled.userLabel = "Rx 1"
+    try application.update(endpoint: labelled)
     let settled = try await changes.settle()
     XCTAssertGreaterThan(settled, initial + 1)
   }

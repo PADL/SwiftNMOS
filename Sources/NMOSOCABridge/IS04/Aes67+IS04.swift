@@ -19,7 +19,7 @@ import Foundation
 import SwiftOCA
 import SwiftOCADevice
 
-extension NMOSOcaRTPAdaptation: NMOSOcaResourceDescribing {
+extension NMOSOcaRTPAdaptation {
   /// A sender is multicast or unicast as its stream is; a receiver takes either, and
   /// IS-04 has it say so by giving the transport without a subclassification.
   public func transport(of endpoint: NMOSOcaEndpoint) async -> String {
@@ -34,15 +34,5 @@ extension NMOSOcaRTPAdaptation: NMOSOcaResourceDescribing {
           let destination = data.ipParameters.first?.destinationAddress, !destination.isEmpty
     else { return NMOSOcaTransport.rtp }
     return MediaStreamSDP.isMulticast(destination) ? NMOSOcaTransport.rtpMulticast : NMOSOcaTransport.rtpUnicast
-  }
-
-  /// The cast mode and the AES67 destination are the endpoint's.
-  public var descriptionProperties: NMOSOcaObservedProperties {
-    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 10)])
-  }
-
-  /// IS-04 requires an RTP sender to give the location of its SDP file.
-  public func hasTransportFile(_ endpoint: NMOSOcaEndpoint) async -> Bool {
-    endpoint.isSender
   }
 }

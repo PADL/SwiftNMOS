@@ -19,7 +19,8 @@ import NMOS
 import SwiftOCADevice
 
 /// What the bridge needs to know about one media transport (AES67, Dante, Milan) that
-/// AES70 leaves to the adaptation. IS-04 and IS-05 each refine this with their own needs.
+/// AES70 leaves to the adaptation: which endpoints are its, how IS-04 describes them,
+/// and how IS-05 reads and changes their connections.
 @OcaDevice
 public protocol NMOSOcaTransportAdaptation: Sendable {
   /// Whether this adaptation presents the endpoint. Adaptations are asked in the order
@@ -27,14 +28,12 @@ public protocol NMOSOcaTransportAdaptation: Sendable {
   /// can take some endpoints of an application (Dante channels carried by AES67 flows).
   func claims(_ endpoint: NMOSOcaEndpoint) async -> Bool
 
-  /// What `claims(_:)` reads of the device's objects, which the bridge then observes.
-  /// Each of these protocols asks what its own methods read, and none has a default.
-  var claimProperties: NMOSOcaObservedProperties { get }
-}
+  /// What these methods read of the device's objects beyond the endpoint's own helpers,
+  /// which the bridge then observes.
+  var observedProperties: NMOSOcaObservedProperties { get }
 
-/// The transport-specific part of an endpoint's IS-04 description.
-@OcaDevice
-public protocol NMOSOcaResourceDescribing: NMOSOcaTransportAdaptation {
+  // MARK: IS-04
+
   /// The transport URN, with its subclassification where it has one, such as
   /// `urn:x-nmos:transport:rtp.mcast`.
   func transport(of endpoint: NMOSOcaEndpoint) async -> String
@@ -42,24 +41,10 @@ public protocol NMOSOcaResourceDescribing: NMOSOcaTransportAdaptation {
   /// The names of the node interfaces the endpoint is bound to, one per leg.
   func interfaceBindings(of endpoint: NMOSOcaEndpoint) async -> [String]
 
-  /// Whether the endpoint is configured to send or receive.
-  func isActive(_ endpoint: NMOSOcaEndpoint) async -> Bool
-
-  /// The media types a receiving endpoint accepts, such as `audio/L24`.
-  func mediaTypes(of endpoint: NMOSOcaEndpoint) async -> [String]
-
   /// Whether a sending endpoint has a transport file to publish at `manifest_href`.
   func hasTransportFile(_ endpoint: NMOSOcaEndpoint) async -> Bool
 
-  /// What these methods read of the device's objects beyond the endpoint's own helpers.
-  var descriptionProperties: NMOSOcaObservedProperties { get }
-}
-
-/// How an endpoint's connection is read and changed, which is what IS-05 needs.
-@OcaDevice
-public protocol NMOSOcaConnecting: NMOSOcaTransportAdaptation {
-  /// The transport URN with any subclassification removed.
-  func transportType(of endpoint: NMOSOcaEndpoint) async -> String
+  // MARK: IS-05
 
   /// The constraints on a receiving endpoint's transport parameters, one element per leg.
   /// A sender's stream is set up outside NMOS, so its parameters are fixed at what they are.
@@ -83,12 +68,33 @@ public protocol NMOSOcaConnecting: NMOSOcaTransportAdaptation {
   /// methods. Throws `NMOSConnectionError`; the new state is read back from the device
   /// afterwards. A sender takes only the enablement it already has.
   func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws
-
-  /// What these methods read of the device's objects beyond the endpoint's own helpers.
-  var connectionProperties: NMOSOcaObservedProperties { get }
 }
 
-public extension NMOSOcaConnecting {
+public extension NMOSOcaTransportAdaptation {
+  /// The transport URN with any subclassification removed, as IS-05 `/transporttype`
+  /// reports it.
+  func transportType(of endpoint: NMOSOcaEndpoint) async -> String {
+    await NMOSOcaTransport.base(of: transport(of: endpoint))
+  }
+
+  /// The interfaces AES70 says the endpoint is assigned to.
+  func interfaceBindings(of endpoint: NMOSOcaEndpoint) async -> [String] {
+    await endpoint.interfaceNames
+  }
+
+  /// IS-04 requires an RTP sender to give the location of its SDP file; the other
+  /// transports have no transport file, so their `manifest_href` is null.
+  func hasTransportFile(_ endpoint: NMOSOcaEndpoint) async -> Bool {
+    guard endpoint.isSender else { return false }
+    return await transportType(of: endpoint) == NMOSOcaTransport.rtp
+  }
+
+  /// An endpoint is active while its connection is enabled, which is IS-05's
+  /// `master_enable`: IS-04 and IS-05 must say the same of it.
+  func isActive(_ endpoint: NMOSOcaEndpoint) async -> Bool {
+    await (try? active(of: endpoint).masterEnable) ?? false
+  }
+
   func transportFile(of endpoint: NMOSOcaEndpoint) async throws -> NMOSTransportFile? { nil }
 
   func transportParameters(

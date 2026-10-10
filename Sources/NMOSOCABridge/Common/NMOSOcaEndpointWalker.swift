@@ -24,23 +24,17 @@ import SwiftOCADevice
 public struct NMOSOcaEndpoint: Sendable {
   public let application: SwiftOCADevice.OcaMediaTransportApplication
   public let endpoint: OcaMediaStreamEndpoint
-  public let status: OcaMediaStreamEndpointStatus?
 
-  public init(
-    application: SwiftOCADevice.OcaMediaTransportApplication,
-    endpoint: OcaMediaStreamEndpoint,
-    status: OcaMediaStreamEndpointStatus?
-  ) {
+  public init(application: SwiftOCADevice.OcaMediaTransportApplication, endpoint: OcaMediaStreamEndpoint) {
     self.application = application
     self.endpoint = endpoint
-    self.status = status
   }
 
   /// The endpoint with the ID as the application has it now; nil once it has gone.
   @OcaDevice
   public init?(application: SwiftOCADevice.OcaMediaTransportApplication, id: OcaMediaStreamEndpointID) {
     guard let endpoint = try? application.endpoint(id) else { return nil }
-    self.init(application: application, endpoint: endpoint, status: application.endpointStatuses[id])
+    self.init(application: application, endpoint: endpoint)
   }
 
   /// The endpoint as the application has it now, for reading back after a change.
@@ -92,9 +86,7 @@ public final class NMOSOcaEndpointWalker: Sendable {
   public var endpoints: [NMOSOcaEndpoint] {
     get async {
       await applications.flatMap { application in
-        application.endpoints.map {
-          NMOSOcaEndpoint(application: application, endpoint: $0, status: application.endpointStatuses[$0.idInternal])
-        }
+        application.endpoints.map { NMOSOcaEndpoint(application: application, endpoint: $0) }
       }
     }
   }
@@ -104,7 +96,6 @@ public final class NMOSOcaEndpointWalker: Sendable {
     .init(defLevel: 3, propertyIndex: 6), // networkApplications
   ]) + .of(SwiftOCADevice.OcaMediaTransportApplication.self, [
     .init(defLevel: 3, propertyIndex: 10), // endpoints
-    .init(defLevel: 3, propertyIndex: 11), // endpointStatuses
   ])
 
   /// Yields whenever something the bridge reads of the network manager, an application

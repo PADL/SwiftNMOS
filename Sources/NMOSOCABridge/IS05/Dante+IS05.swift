@@ -22,7 +22,7 @@ import SwiftOCADevice
 /// Native Dante channels (AES70-23). A receive channel is connected by naming the
 /// transmit channel it subscribes to, so those two names are its transport parameters,
 /// and a transmit channel's parameters are the names a receiver would subscribe with.
-extension NMOSOcaDanteAdaptation: NMOSOcaConnecting {
+extension NMOSOcaDanteAdaptation {
   private static let deviceName = "device_name"
   private static let channelName = "channel_name"
 
@@ -31,12 +31,10 @@ extension NMOSOcaDanteAdaptation: NMOSOcaConnecting {
   /// The application's channel endpoints, where a subscription appears.
   private static let channelEndpointsID = OcaPropertyID(defLevel: 4, propertyIndex: 1)
 
-  public func transportType(of endpoint: NMOSOcaEndpoint) async -> String { NMOSOcaTransport.dante }
-
   // MARK: Reading
 
   /// A sender is named by the device; a channel is read from its channel endpoint.
-  public var connectionProperties: NMOSOcaObservedProperties {
+  public var observedProperties: NMOSOcaObservedProperties {
     .of(SwiftOCADevice.OcaDeviceManager.self, [.init(defLevel: 3, propertyIndex: 4)])
       + .of(SwiftOCADevice.DanteOcaMediaTransportApplication.self, [Self.channelEndpointsID])
   }

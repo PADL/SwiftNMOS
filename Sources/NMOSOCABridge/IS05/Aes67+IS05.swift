@@ -23,17 +23,16 @@ import SwiftOCADevice
 /// active description in its endpoints' adaptation data and takes a new one through
 /// ConfigureEndpointFromSDP; any other application does both through
 /// `MediaStreamEndpointSDPRepresentable`.
-extension NMOSOcaRTPAdaptation: NMOSOcaConnecting {
+extension NMOSOcaRTPAdaptation {
   /// RFC 3551's default RTP port, for an endpoint that has not been given one.
   private static let defaultPort: Int64 = 5004
   private static let unspecifiedAddress = "0.0.0.0"
 
-  public func transportType(of endpoint: NMOSOcaEndpoint) async -> String { NMOSOcaTransport.rtp }
-
   // MARK: Reading
 
-  /// The AES67 adaptation data is the endpoint's; the addresses its interfaces'.
-  public var connectionProperties: NMOSOcaObservedProperties {
+  /// The application says how an endpoint is described, and the endpoint's cast mode
+  /// and AES67 adaptation data are its own; the addresses are its interfaces'.
+  public var observedProperties: NMOSOcaObservedProperties {
     .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 10)])
       + NMOSOcaEndpoint.addressProperties
   }

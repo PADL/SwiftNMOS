@@ -43,11 +43,7 @@ final class NMOSOcaAdaptationsTests: XCTestCase {
     _ application: SwiftOCADevice.OcaMediaTransportApplication,
     id: OcaMediaStreamEndpointID = 1
   ) -> NMOSOcaEndpoint {
-    NMOSOcaEndpoint(
-      application: application,
-      endpoint: OcaMediaStreamEndpoint(idInternal: id, direction: .input),
-      status: nil
-    )
+    NMOSOcaEndpoint(application: application, endpoint: OcaMediaStreamEndpoint(idInternal: id, direction: .input))
   }
 
   @OcaDevice
@@ -84,8 +80,7 @@ final class NMOSOcaAdaptationsTests: XCTestCase {
         currentStreamMode: OcaMediaStreamMode(
           frameFormat: .crf_milan, encodingType: "", samplingRate: 48000, channelCount: 0, packetTime: 125e-6
         )
-      ),
-      status: nil
+      )
     )
     let claimedClockReference = await adaptations.adaptation(for: clockReference)
     XCTAssertNil(claimedClockReference)

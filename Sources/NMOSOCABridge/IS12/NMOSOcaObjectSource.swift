@@ -241,7 +241,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     guard let application = object as? SwiftOCADevice.OcaMediaTransportApplication else { return nil }
     var touchpoints = [NcTouchpoint]()
     for endpoint in application.endpoints {
-      let endpoint = NMOSOcaEndpoint(application: application, endpoint: endpoint, status: nil)
+      let endpoint = NMOSOcaEndpoint(application: application, endpoint: endpoint)
       // only endpoints an adaptation presents are IS-04 resources
       guard await adaptations.adaptation(for: endpoint) != nil else { continue }
       touchpoints.append(NcTouchpoint(

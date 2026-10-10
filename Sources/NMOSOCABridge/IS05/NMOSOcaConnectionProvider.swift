@@ -37,7 +37,7 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
   private struct Claim {
     let application: SwiftOCADevice.OcaMediaTransportApplication
     let endpointID: OcaMediaStreamEndpointID
-    let adaptation: any NMOSOcaConnecting
+    let adaptation: any NMOSOcaTransportAdaptation
   }
 
   private struct Claims {
@@ -75,10 +75,9 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
     walker = NMOSOcaEndpointWalker(device: device, adaptations: adaptations)
   }
 
-  /// The endpoints and their statuses, and the session agents observed below.
+  /// The endpoints, and the session agents observed below.
   static let observedProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaMediaTransportApplication.self, [
     .init(defLevel: 3, propertyIndex: 10), // endpoints
-    .init(defLevel: 3, propertyIndex: 11), // endpointStatuses
     .init(defLevel: 3, propertyIndex: 13), // transportSessionControlAgentONos
   ])
 
@@ -95,8 +94,7 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
     let started = generation
     var decided = [Key: Claim]()
     for endpoint in await walker.endpoints {
-      guard let adaptation = await adaptations.adaptation(for: endpoint) as? any NMOSOcaConnecting
-      else { continue }
+      guard let adaptation = await adaptations.adaptation(for: endpoint) else { continue }
       decided[Key(kind: endpoint.kind, id: endpoint.id(endpoint.kind, in: ids))] = Claim(
         application: endpoint.application, endpointID: endpoint.endpoint.idInternal, adaptation: adaptation
       )
@@ -119,7 +117,7 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
   private func find(
     _ kind: NMOSResourceKind,
     _ id: NMOSID
-  ) async throws -> (endpoint: NMOSOcaEndpoint, adaptation: any NMOSOcaConnecting) {
+  ) async throws -> (endpoint: NMOSOcaEndpoint, adaptation: any NMOSOcaTransportAdaptation) {
     let key = Key(kind: kind, id: id)
     if let claim = await claimed()[key], let endpoint = endpoint(of: claim) {
       return (endpoint, claim.adaptation)

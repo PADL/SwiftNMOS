@@ -25,7 +25,7 @@ import XCTest
 /// The RTP adaptation, counting how often it is asked whether an endpoint is its own:
 /// on a real device that question can cost a request to the hardware.
 @OcaDevice
-private final class CountingAdaptation: NMOSOcaConnecting {
+private final class CountingAdaptation: NMOSOcaTransportAdaptation {
   private let rtp = NMOSOcaRTPAdaptation()
   private(set) var claimsAsked = 0
   /// How often what it reads is asked, which whoever observes the applications does.
@@ -38,13 +38,12 @@ private final class CountingAdaptation: NMOSOcaConnecting {
     return await rtp.claims(endpoint)
   }
 
-  var claimProperties: NMOSOcaObservedProperties {
+  var observedProperties: NMOSOcaObservedProperties {
     readsAsked += 1
-    return rtp.claimProperties
+    return rtp.observedProperties
   }
-  var connectionProperties: NMOSOcaObservedProperties { rtp.connectionProperties }
 
-  func transportType(of endpoint: NMOSOcaEndpoint) async -> String { await rtp.transportType(of: endpoint) }
+  func transport(of endpoint: NMOSOcaEndpoint) async -> String { await rtp.transport(of: endpoint) }
 
   func receiverConstraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]] {
     try await rtp.receiverConstraints(of: endpoint)

@@ -29,11 +29,6 @@ public struct NMOSOcaRTPAdaptation: NMOSOcaTransportAdaptation {
     }
     return endpoint.application is SwiftOCADevice.Aes67OcaMediaTransportApplication
   }
-
-  /// The application looks the endpoint up to say how it is described.
-  public var claimProperties: NMOSOcaObservedProperties {
-    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 10)])
-  }
 }
 
 /// Native Dante channels, patched by device and channel name.
@@ -44,7 +39,7 @@ public struct NMOSOcaDanteAdaptation: NMOSOcaTransportAdaptation {
     endpoint.application is SwiftOCADevice.DanteOcaMediaTransportApplication
   }
 
-  public var claimProperties: NMOSOcaObservedProperties { .empty }
+  public func transport(of endpoint: NMOSOcaEndpoint) async -> String { NMOSOcaTransport.dante }
 }
 
 /// AVB streams of a Milan entity, patched by talker entity ID and stream index.
@@ -58,12 +53,7 @@ public struct NMOSOcaMilanAdaptation: NMOSOcaTransportAdaptation {
       && endpoint.endpoint.currentStreamMode.frameFormat != .crf_milan
   }
 
-  public var claimProperties: NMOSOcaObservedProperties {
-    .of(SwiftOCADevice.OcaMediaTransportApplication.self, [
-      .init(defLevel: 2, propertyIndex: 4), // adaptationIdentifier
-      .init(defLevel: 3, propertyIndex: 10), // endpoints
-    ])
-  }
+  public func transport(of endpoint: NMOSOcaEndpoint) async -> String { NMOSOcaTransport.milan }
 }
 
 /// The adaptations a bridge presents endpoints through, in the order they are asked.
@@ -94,9 +84,7 @@ public struct NMOSOcaAdaptations: Sendable {
   @OcaDevice
   var observedProperties: NMOSOcaObservedProperties {
     adaptations.reduce(NMOSOcaEndpointWalker.observedProperties + NMOSOcaBridge.observedProperties + NMOSOcaConnectionProvider.observedProperties) {
-      $0 + $1.claimProperties
-        + (($1 as? any NMOSOcaResourceDescribing)?.descriptionProperties ?? .empty)
-        + (($1 as? any NMOSOcaConnecting)?.connectionProperties ?? .empty)
+      $0 + $1.observedProperties
     }
   }
 }

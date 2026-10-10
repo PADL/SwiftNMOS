@@ -84,8 +84,7 @@ extension NMOSOcaBridge {
     ))]
     for endpoint in endpoints {
       // a transport no adaptation describes cannot be presented, so it is left out
-      guard let adaptation = await adaptations.adaptation(for: endpoint) as? any NMOSOcaResourceDescribing
-      else { continue }
+      guard let adaptation = await adaptations.adaptation(for: endpoint) else { continue }
       if endpoint.isSender {
         resources += await senderResources(for: endpoint, adaptation: adaptation, context: context)
       } else {
