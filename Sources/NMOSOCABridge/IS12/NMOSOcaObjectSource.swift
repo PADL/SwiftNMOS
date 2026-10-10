@@ -127,6 +127,12 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     self.logger = logger
     self.resourceIDs = resourceIDs
     classes = NMOSOcaControlClasses(mapping: mapping, logger: logger)
+    // MS-05-02 has a class manager, which IS-12 presents the device's as; a device that
+    // has not created one gets one as the bridge starts
+    Task { @OcaDevice [device] in
+      guard await device.classManager == nil else { return }
+      _ = try? await SwiftOCADevice.OcaClassManager(deviceDelegate: device)
+    }
   }
 
   /// The device holds the endpoint, and through it every subscription of the sessions'
