@@ -190,24 +190,17 @@ final class NMOSOcaMeteringTests: XCTestCase {
   }
 
   @OcaDevice
-  func testCountersAreReadAndNotified() async throws {
+  func testCounterSetsAreReadWithMethodsNotPresentedAsProperties() async throws {
     let application = MeteringFixture.application!
+    // AES70-2:2024 §6.8: a counter set is a private property, raising no PropertyChanged
     let properties = try await elements("properties", of: application)
-    let counters = try XCTUnwrap(properties["endpointCounterSets"])
-    XCTAssertNotNil(properties["counterSet"])
+    XCTAssertNil(properties["endpointCounterSets"])
+    XCTAssertNil(properties["counterSet"])
     let methods = try await elements("methods", of: application)
+    XCTAssertNotNil(methods["GetEndpointCounterSets"])
     XCTAssertNotNil(methods["GetEndpointCounter"])
+    XCTAssertNotNil(methods["GetCounterSet"])
     XCTAssertNotNil(methods["ResetCounters"])
-    let read = await get(application, counters)
-    XCTAssertEqual(read.status, .ok)
-
-    let notifications = model.notifications(for: session)
-    await model.subscriptionsChanged(to: [NcOid(application.objectNumber)], session: session)
-    let counter = OcaCounter(id: 1, value: 1, initialValue: 0, role: "Packets", notifiers: [])
-    application.endpointCounterSets[1] = OcaCounterSet(counter: [counter])
-    let first = await next(notifications)
-    XCTAssertEqual(first?.eventData["propertyId"], counters.json)
-    await model.subscriptionsChanged(to: [], session: session)
   }
 
   @OcaDevice
