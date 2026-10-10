@@ -180,19 +180,17 @@ final class NMOSOcaObservedObject {
     return false
   }
 
-  /// Observes the objects together until `changed` answers false for one or `alongside`
-  /// returns, either of which says the set of objects may have changed. One that goes is
-  /// simply heard from no more; whatever removed it says so itself.
+  /// Observes the objects together until `changed` answers false for one, which says the
+  /// set of objects may have changed. One that goes is simply heard from no more;
+  /// whatever removed it says so itself.
   static func observe(
     _ objects: [NMOSOcaObservedObject],
-    alongside: (@Sendable () async -> Void)? = nil,
     _ changed: @escaping @Sendable @OcaDevice (NMOSOcaObservedObject) async -> Bool
   ) async {
     await withTaskGroup(of: Bool.self) { group in
       for object in objects {
         group.addTask { await object.observe { _ in await changed(object) } }
       }
-      if let alongside { group.addTask { await alongside(); return true } }
       for await setChanged in group where setChanged { break }
       group.cancelAll()
     }

@@ -99,28 +99,35 @@ public final class NMOSOcaEndpointWalker: Sendable {
     .init(defLevel: 3, propertyIndex: 10), // endpoints
   ])
 
-  /// Yields whenever something the bridge reads of the network manager, an application
-  /// or a network interface changes, and once at the start. Counters and status, which a
-  /// transport reports continually, are not among them, nor is a property set again to
-  /// the value it has. Changes that arrive together are reported once; the consumer
-  /// re-reads what it needs. Ends when the consumer stops iterating.
-  public nonisolated func changes() -> AsyncStream<Void> {
+  /// Yields whenever something the bridge reads of the network manager, an application, a
+  /// network interface or an object `extra` gives changes, and once at the start. Counters
+  /// and status, which a transport reports continually, are not among them, nor is a
+  /// property set again to the value it has. Changes that arrive together are reported
+  /// once; the consumer re-reads what it needs, and `extra` is asked again, its objects
+  /// watched afresh when they are not those watched before. Ends when the consumer
+  /// stops iterating.
+  public nonisolated func changes(
+    observing extra: @escaping @Sendable @OcaDevice () async -> [SwiftOCADevice.OcaRoot] = { [] }
+  ) -> AsyncStream<Void> {
     AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
-      let task = Task { @OcaDevice in await self.observe(continuation) }
+      let task = Task { @OcaDevice in await self.observe(extra, continuation) }
       continuation.onTermination = { _ in task.cancel() }
     }
   }
 
-  private var observedObjects: [SwiftOCADevice.OcaRoot] {
-    get async {
-      let manager: [SwiftOCADevice.OcaRoot] = await networkManager.map { [$0] } ?? []
-      return await manager + applications + networkInterfaces
-    }
+  private func observedObjects(
+    _ extra: @Sendable @OcaDevice () async -> [SwiftOCADevice.OcaRoot]
+  ) async -> [SwiftOCADevice.OcaRoot] {
+    let manager: [SwiftOCADevice.OcaRoot] = await networkManager.map { [$0] } ?? []
+    return await manager + applications + networkInterfaces + extra()
   }
 
-  private func observe(_ continuation: AsyncStream<Void>.Continuation) async {
+  private func observe(
+    _ extra: @escaping @Sendable @OcaDevice () async -> [SwiftOCADevice.OcaRoot],
+    _ continuation: AsyncStream<Void>.Continuation
+  ) async {
     while !Task.isCancelled {
-      let objects = await observedObjects
+      let objects = await observedObjects(extra)
       guard !objects.isEmpty else {
         // a device without a network manager has nothing to observe: a device makes its
         // manager before NMOS starts, and NMOS stops before the manager goes
@@ -128,53 +135,16 @@ public final class NMOSOcaEndpointWalker: Sendable {
         await Self.untilCancelled()
         break
       }
+      let numbers = objects.map(\.objectNumber)
       // each object is watched before the consumer is told to read it all
       let observed = await watch(objects)
       continuation.yield()
-      // only the network manager's lists of applications and interfaces change the set
-      await NMOSOcaObservedObject.observe(observed) { object in
+      await NMOSOcaObservedObject.observe(observed) { _ in
         continuation.yield()
-        return !(object.object is SwiftOCADevice.OcaNetworkManager)
+        return await self.observedObjects(extra).map(\.objectNumber) == numbers
       }
     }
     continuation.finish()
-  }
-
-  /// Yields whenever something the walker observes changes or something read of `objects`
-  /// does, and once at the start. `objects` is asked again at each change the walker
-  /// reports, and its objects are observed afresh when they are not those it gave before.
-  nonisolated func changes(
-    observing objects: @escaping @Sendable @OcaDevice () async -> [SwiftOCADevice.OcaRoot]
-  ) -> AsyncStream<Void> {
-    AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
-      let task = Task { @OcaDevice in
-        await self.observe(objects, continuation)
-        continuation.finish()
-      }
-      continuation.onTermination = { _ in task.cancel() }
-    }
-  }
-
-  private func observe(
-    _ objects: @escaping @Sendable @OcaDevice () async -> [SwiftOCADevice.OcaRoot],
-    _ continuation: AsyncStream<Void>.Continuation
-  ) async {
-    while !Task.isCancelled {
-      let current = await objects()
-      let observedNumbers = current.map(\.objectNumber)
-      // each object is watched before the consumer is told to read it all
-      let observed = await watch(current)
-      continuation.yield()
-      await NMOSOcaObservedObject.observe(observed, alongside: {
-        for await _ in self.changes() {
-          continuation.yield()
-          if await objects().map(\.objectNumber) != observedNumbers { return }
-        }
-      }) { _ in
-        continuation.yield()
-        return true
-      }
-    }
   }
 
   private func watch(_ objects: [SwiftOCADevice.OcaRoot]) async -> [NMOSOcaObservedObject] {
