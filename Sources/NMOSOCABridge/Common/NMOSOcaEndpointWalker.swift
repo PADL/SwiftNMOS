@@ -15,6 +15,7 @@
 //
 
 import Foundation
+import Logging
 import NMOS
 import SwiftOCA
 import SwiftOCADevice
@@ -64,10 +65,14 @@ public final class NMOSOcaEndpointWalker: Sendable {
   let observer: NMOSOcaObserver
 
   /// `adaptations` are those whose reads the consumer makes, which are observed too.
-  public nonisolated init(device: OcaDevice = .shared, adaptations: NMOSOcaAdaptations = .standard) {
+  public nonisolated init(
+    device: OcaDevice = .shared,
+    adaptations: NMOSOcaAdaptations = .standard,
+    logger: Logger = Logger(label: "com.padl.NMOSOCABridge")
+  ) {
     self.device = device
     self.adaptations = adaptations
-    observer = NMOSOcaObserver(device: device)
+    observer = NMOSOcaObserver(device: device, logger: logger)
   }
 
   public var networkManager: SwiftOCADevice.OcaNetworkManager? {
@@ -99,18 +104,23 @@ public final class NMOSOcaEndpointWalker: Sendable {
     .init(defLevel: 3, propertyIndex: 10), // endpoints
   ])
 
+  /// Whether a change to an object's property may change which objects are observed.
+  public typealias ChangesSet = @Sendable (SwiftOCADevice.OcaRoot, OcaPropertyID) -> Bool
+
   /// Yields whenever something the bridge reads of the network manager, an application, a
   /// network interface or an object `extra` gives changes, and once at the start. Counters
   /// and status, which a transport reports continually, are not among them, nor is a
   /// property set again to the value it has. Changes that arrive together are reported
-  /// once; the consumer re-reads what it needs, and `extra` is asked again, its objects
-  /// watched afresh when they are not those watched before. Ends when the consumer
-  /// stops iterating.
+  /// once; the consumer re-reads what it needs. The network manager's lists change the
+  /// set of objects, as does whatever `changesSet` says; `extra` is then asked again, and
+  /// its objects watched afresh if they are not those watched before. Ends when the
+  /// consumer stops iterating.
   public nonisolated func changes(
-    observing extra: @escaping @Sendable @OcaDevice () async -> [SwiftOCADevice.OcaRoot] = { [] }
+    observing extra: @escaping @Sendable @OcaDevice () async -> [SwiftOCADevice.OcaRoot] = { [] },
+    changesSet: @escaping ChangesSet = { _, _ in false }
   ) -> AsyncStream<Void> {
     AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
-      let task = Task { @OcaDevice in await self.observe(extra, continuation) }
+      let task = Task { @OcaDevice in await self.observe(extra, changesSet, continuation) }
       continuation.onTermination = { _ in task.cancel() }
     }
   }
@@ -124,6 +134,7 @@ public final class NMOSOcaEndpointWalker: Sendable {
 
   private func observe(
     _ extra: @escaping @Sendable @OcaDevice () async -> [SwiftOCADevice.OcaRoot],
+    _ changesSet: @escaping ChangesSet,
     _ continuation: AsyncStream<Void>.Continuation
   ) async {
     while !Task.isCancelled {
@@ -139,8 +150,9 @@ public final class NMOSOcaEndpointWalker: Sendable {
       // each object is watched before the consumer is told to read it all
       let observed = await watch(objects)
       continuation.yield()
-      await NMOSOcaObservedObject.observe(observed) { _ in
+      await NMOSOcaObservedObject.observe(observed) { object, property in
         continuation.yield()
+        guard object.object is SwiftOCADevice.OcaNetworkManager || changesSet(object.object, property) else { return true }
         return await self.observedObjects(extra).map(\.objectNumber) == numbers
       }
     }

@@ -15,6 +15,7 @@
 //
 
 import Foundation
+import Logging
 import SwiftOCA
 import SwiftOCADevice
 
@@ -32,12 +33,15 @@ public struct NMOSOcaObservedProperties: Sendable {
 
   public static let empty = NMOSOcaObservedProperties(entries: [])
 
-  /// The properties of `T` that are read.
+  /// The properties of `T` that are read; of only those objects `matching` says, if given.
   public static func of<T: SwiftOCADevice.OcaRoot>(
     _: T.Type,
+    where matching: @escaping @Sendable (T) -> Bool = { _ in true },
     _ properties: Set<OcaPropertyID>
   ) -> NMOSOcaObservedProperties {
-    NMOSOcaObservedProperties(entries: [Entry(classID: T.classID, matches: { $0 is T }, properties: properties)])
+    NMOSOcaObservedProperties(entries: [Entry(
+      classID: T.classID, matches: { ($0 as? T).map(matching) ?? false }, properties: properties
+    )])
   }
 
   public static func + (lhs: NMOSOcaObservedProperties, rhs: NMOSOcaObservedProperties) -> NMOSOcaObservedProperties {
@@ -61,6 +65,7 @@ public struct NMOSOcaObservedProperties: Sendable {
 @OcaDevice
 final class NMOSOcaObserver {
   private let device: OcaDevice
+  private let logger: Logger
   let endpoint = NMOSOcaControlEndpoint()
   /// Giving the device the endpoint, which every controller added waits for.
   private var registration: Task<Void, Never>?
@@ -68,8 +73,9 @@ final class NMOSOcaObserver {
   private var watchers = [OcaONo: [Int: AsyncStream<OcaPropertyID>.Continuation]]()
   private var lastWatcher = 0
 
-  nonisolated init(device: OcaDevice) {
+  nonisolated init(device: OcaDevice, logger: Logger = Logger(label: "com.padl.NMOSOCABridge")) {
     self.device = device
+    self.logger = logger
   }
 
   /// The device holds the endpoint, and through it every subscription of its controllers;
@@ -85,7 +91,11 @@ final class NMOSOcaObserver {
     if let registration {
       await registration.value
     } else {
-      let registration = Task { @OcaDevice [device, endpoint] in _ = try? await device.add(endpoint: endpoint) }
+      let registration = Task { @OcaDevice [device, endpoint, logger] in
+        do { try await device.add(endpoint: endpoint) } catch {
+          logger.error("not receiving events: the device refused the NMOS control endpoint: \(error)")
+        }
+      }
       self.registration = registration
       await registration.value
     }
@@ -185,11 +195,11 @@ final class NMOSOcaObservedObject {
   /// whatever removed it says so itself.
   static func observe(
     _ objects: [NMOSOcaObservedObject],
-    _ changed: @escaping @Sendable @OcaDevice (NMOSOcaObservedObject) async -> Bool
+    _ changed: @escaping @Sendable @OcaDevice (NMOSOcaObservedObject, OcaPropertyID) async -> Bool
   ) async {
     await withTaskGroup(of: Bool.self) { group in
       for object in objects {
-        group.addTask { await object.observe { _ in await changed(object) } }
+        group.addTask { await object.observe { id in await changed(object, id) } }
       }
       for await setChanged in group where setChanged { break }
       group.cancelAll()

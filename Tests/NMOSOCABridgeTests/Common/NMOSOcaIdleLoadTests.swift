@@ -89,8 +89,8 @@ final class NMOSOcaIdleLoadTests: XCTestCase {
     XCTAssertEqual(resources, 130)
     let before = (described: described.withLock { $0 }, read: read.withLock { $0 })
 
-    // an idle entity's reports: counters, and status and availability, which NMOS does
-    // not read, whether or not they changed
+    // an idle entity's reports: counters, availability, and the statuses of a transport
+    // whose connections are read elsewhere, which NMOS does not read whether or not they changed
     for report in 1...10 {
       milan.endpointCounterSets = [1: OcaCounterSet(), 2: OcaCounterSet()]
       milan.endpointStatuses[1] = .init(state: report % 2 == 0 ? .connected : .notReady)

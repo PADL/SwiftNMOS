@@ -117,7 +117,10 @@ extension NMOSOcaBridge {
   /// the device manager, what the endpoint walker observes, the clocks and time sources
   /// of the endpoints, and the applications' session agents.
   nonisolated func changes() -> AsyncStream<Void> {
-    walker.changes(observing: { await self.describedObjects })
+    walker.changes(observing: { await self.describedObjects }) { object, property in
+      // an application's endpoints name the clocks, and its agent list the agents
+      object is SwiftOCADevice.OcaMediaTransportApplication && ["3.10", "3.13"].contains(property)
+    }
   }
 
   /// The endpoints say which clocks there are, and the applications which agents, so the

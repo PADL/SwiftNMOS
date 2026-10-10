@@ -122,6 +122,53 @@ private struct TestTransports {
   }
 }
 
+/// An application that describes its streams itself and, when configured, changes only
+/// an endpoint's status, as a transport without AES67 adaptation data does.
+private final class SDPApplication: SwiftOCADevice.OcaMediaTransportApplication, MediaStreamEndpointSDPRepresentable {
+  private var active = [OcaMediaStreamEndpointID: OcaSDPString]()
+
+  func getActiveSDP(_ id: OcaMediaStreamEndpointID) async throws -> OcaSDPString { active[id] ?? "" }
+
+  func configureEndpointFromSDP(
+    endpointID id: OcaMediaStreamEndpointID,
+    sdpString: OcaSDPString,
+    streamID: OcaUint16,
+    from controller: any OcaController
+  ) async throws {
+    active[id] = sdpString
+    endpointStatuses[id] = .init(state: sdpString.isEmpty ? .ready : .running)
+  }
+
+  func usesSessionDescription(_ id: OcaMediaStreamEndpointID) async -> Bool { true }
+}
+
+extension NMOSOcaResourceDescriptionTests {
+  @OcaDevice
+  func testAStatusChangeOfAnApplicationDescribedBySDPIsDescribed() async throws {
+    let manager = try await TestDevice.networkManager()
+    let application = try await SDPApplication(role: TestTransports.role("SDP"), deviceDelegate: OcaDevice.shared)
+    application.insert(endpoint: OcaMediaStreamEndpoint(idInternal: 1, direction: .input), status: .init(state: .ready))
+    manager.networkApplications = [application]
+    let store = NMOSResourceStore()
+    let bridge = NMOSOcaBridge(store: store) { host() }
+    let receiverID = NMOSOcaResourceIDs(seed: host().seed).id(.receiver, application: application.objectNumber, endpoint: 1)
+
+    let running = Task { try await bridge.run() }
+    defer { running.cancel() }
+    try await waitFor("the receiver is described") { await store.resource(.receiver, id: receiverID) != nil }
+    let idle = await store.receivers.first { $0.id == receiverID }
+    XCTAssertEqual(idle?.subscription.active, false)
+
+    // a controller patches the receiver through the application, which shows only in its status
+    try await application.configureEndpointFromSDP(
+      endpointID: 1, sdpString: TestTransports.stream, streamID: 0, from: TestController()
+    )
+    try await waitFor("the receiver is active") {
+      await store.receivers.first { $0.id == receiverID }?.subscription.active == true
+    }
+  }
+}
+
 private func host() -> NMOSOcaHost {
   NMOSOcaHost(
     seed: "00-22-97-01-02-03",
