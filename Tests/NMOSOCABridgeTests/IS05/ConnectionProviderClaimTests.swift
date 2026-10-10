@@ -46,8 +46,8 @@ private final class CountingAdaptation: NMOSOcaConnecting {
 
   func transportType(of endpoint: NMOSOcaEndpoint) async -> String { await rtp.transportType(of: endpoint) }
 
-  func constraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]] {
-    try await rtp.constraints(of: endpoint)
+  func receiverConstraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]] {
+    try await rtp.receiverConstraints(of: endpoint)
   }
 
   func active(of endpoint: NMOSOcaEndpoint) async throws -> NMOSConnectionState {
@@ -65,8 +65,8 @@ private final class CountingAdaptation: NMOSOcaConnecting {
     try await rtp.transportParameters(from: file, for: endpoint)
   }
 
-  func activate(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
-    try await rtp.activate(endpoint, staged: staged)
+  func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
+    try await rtp.activateReceiver(endpoint, staged: staged)
   }
 }
 

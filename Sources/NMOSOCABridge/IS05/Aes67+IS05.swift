@@ -99,11 +99,7 @@ extension NMOSOcaRTPAdaptation: NMOSOcaConnecting {
     ]
   }
 
-  public func constraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]] {
-    guard !endpoint.isSender else {
-      // a sender's stream is set up outside NMOS, so each parameter is what it is
-      return try await active(of: endpoint).transportParameters.map { $0.mapValues { .fixed($0) } }
-    }
+  public func receiverConstraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]] {
     let interfaces = await endpoint.interfaceAddresses
     return [[
       "source_ip": .init(), "multicast_ip": .init(), "destination_port": .init(), "rtp_enabled": .fixed(true),
@@ -141,14 +137,7 @@ extension NMOSOcaRTPAdaptation: NMOSOcaConnecting {
 
   // MARK: Activation
 
-  public func activate(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
-    guard !endpoint.isSender else {
-      // the constraints admit only what the sender is already doing
-      guard try await staged.masterEnable == active(of: endpoint).masterEnable else {
-        throw NMOSConnectionError.invalid("This sender is enabled and disabled where its stream is set up")
-      }
-      return
-    }
+  public func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
     guard staged.masterEnable else {
       return try await configure(endpoint, sdpString: "", streamID: 0)
     }

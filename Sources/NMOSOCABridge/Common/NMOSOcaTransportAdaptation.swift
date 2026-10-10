@@ -61,8 +61,9 @@ public protocol NMOSOcaConnecting: NMOSOcaTransportAdaptation {
   /// The transport URN with any subclassification removed.
   func transportType(of endpoint: NMOSOcaEndpoint) async -> String
 
-  /// The constraints on every transport parameter, one element per leg.
-  func constraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]]
+  /// The constraints on a receiving endpoint's transport parameters, one element per leg.
+  /// A sender's stream is set up outside NMOS, so its parameters are fixed at what they are.
+  func receiverConstraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]]
 
   /// The endpoint's current connection, read from its adaptation data. The peer ID is
   /// nil: the device does not know which NMOS resource is at the other end.
@@ -72,23 +73,41 @@ public protocol NMOSOcaConnecting: NMOSOcaTransportAdaptation {
   func transportFile(of endpoint: NMOSOcaEndpoint) async throws -> NMOSTransportFile?
 
   /// The transport parameters a transport file implies for a receiving endpoint, one
-  /// element per leg; nil if the transport takes none from files.
+  /// element per leg; a transport that takes none from files refuses the file.
   func transportParameters(
     from file: NMOSTransportFile,
     for endpoint: NMOSOcaEndpoint
   ) async throws -> [NMOSTransportParameters]?
 
-  /// Applies the settings through the application's AES70 methods. Throws
-  /// `NMOSConnectionError`; the new state is read back from the device afterwards.
-  func activate(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws
+  /// Applies the settings to a receiving endpoint through the application's AES70
+  /// methods. Throws `NMOSConnectionError`; the new state is read back from the device
+  /// afterwards. A sender takes only the enablement it already has.
+  func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws
 
   /// What these methods read of the device's objects beyond the endpoint's own helpers.
   var connectionProperties: NMOSOcaObservedProperties { get }
 }
 
 public extension NMOSOcaConnecting {
+  func transportFile(of endpoint: NMOSOcaEndpoint) async throws -> NMOSTransportFile? { nil }
+
   func transportParameters(
     from file: NMOSTransportFile,
     for endpoint: NMOSOcaEndpoint
-  ) async throws -> [NMOSTransportParameters]? { nil }
+  ) async throws -> [NMOSTransportParameters]? {
+    throw await NMOSConnectionError.noTransportFile(transportType(of: endpoint))
+  }
+
+  func constraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]] {
+    guard endpoint.isSender else { return try await receiverConstraints(of: endpoint) }
+    return try await active(of: endpoint).transportParameters.map { $0.mapValues { .fixed($0) } }
+  }
+
+  func activate(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
+    guard endpoint.isSender else { return try await activateReceiver(endpoint, staged: staged) }
+    // the constraints admit only what the sender is already doing
+    guard try await staged.masterEnable == active(of: endpoint).masterEnable else {
+      throw NMOSConnectionError.invalid("This sender is enabled and disabled where its stream is set up")
+    }
+  }
 }

@@ -83,34 +83,16 @@ extension NMOSOcaMilanAdaptation: NMOSOcaConnecting {
     )
   }
 
-  public func constraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]] {
-    guard !endpoint.isSender else {
-      return try await active(of: endpoint).transportParameters.map { $0.mapValues { .fixed($0) } }
-    }
-    return [[
+  public func receiverConstraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]] {
+    [[
       Self.entityID: .init(pattern: "^(0x)?[0-9a-fA-F]{1,16}$"),
       Self.streamIndex: .init(maximum: 65535, minimum: 0),
     ]]
   }
 
-  public func transportFile(of endpoint: NMOSOcaEndpoint) async throws -> NMOSTransportFile? { nil }
-
-  public func transportParameters(
-    from file: NMOSTransportFile,
-    for endpoint: NMOSOcaEndpoint
-  ) async throws -> [NMOSTransportParameters]? {
-    throw NMOSConnectionError.noTransportFile("Milan")
-  }
-
   // MARK: Activation
 
-  public func activate(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
-    guard !endpoint.isSender else {
-      guard staged.masterEnable else {
-        throw NMOSConnectionError.invalid("A Milan talker stream is stopped by unbinding its listeners")
-      }
-      return
-    }
+  public func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
     guard let agent = await sessionAgent(of: endpoint) else { throw NMOSConnectionError.notFound }
     let id = endpoint.endpoint.idInternal
     do {

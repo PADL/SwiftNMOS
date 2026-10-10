@@ -86,10 +86,7 @@ extension NMOSOcaDanteAdaptation: NMOSOcaConnecting {
     ]])
   }
 
-  public func constraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]] {
-    guard !endpoint.isSender else {
-      return try await active(of: endpoint).transportParameters.map { $0.mapValues { .fixed($0) } }
-    }
+  public func receiverConstraints(of endpoint: NMOSOcaEndpoint) async throws -> [[String: NMOSConstraint]] {
     // a pattern says the parameters are strings, which a controller editing a cleared
     // (null) one cannot otherwise tell; Dante names are up to 31 characters, and a
     // channel's cannot contain the "@" that joins it to a device name
@@ -102,24 +99,9 @@ extension NMOSOcaDanteAdaptation: NMOSOcaConnecting {
   private static let deviceNamePattern = "^[A-Za-z0-9-]{1,31}$"
   private static let channelNamePattern = "^[^@]{1,31}$"
 
-  public func transportFile(of endpoint: NMOSOcaEndpoint) async throws -> NMOSTransportFile? { nil }
-
-  public func transportParameters(
-    from file: NMOSTransportFile,
-    for endpoint: NMOSOcaEndpoint
-  ) async throws -> [NMOSTransportParameters]? {
-    throw NMOSConnectionError.noTransportFile("Dante")
-  }
-
   // MARK: Activation
 
-  public func activate(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
-    guard !endpoint.isSender else {
-      guard staged.masterEnable else {
-        throw NMOSConnectionError.invalid("A Dante transmit channel cannot be disabled")
-      }
-      return
-    }
+  public func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
     guard let application = endpoint.application as? SwiftOCADevice.DanteOcaMediaTransportApplication,
           let (id, channel) = channelEndpoint(of: endpoint)
     else { throw NMOSConnectionError.notFound }
