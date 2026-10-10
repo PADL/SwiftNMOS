@@ -127,13 +127,15 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     self.logger = logger
     self.resourceIDs = resourceIDs
     classes = NMOSOcaControlClasses(mapping: mapping, logger: logger)
-    // MS-05-02 has a class manager, which IS-12 presents the device's as; a device that
-    // has not made one gets one as the bridge starts
-    Task { @OcaDevice [device, logger] in
-      guard await device.classManager == nil else { return }
-      do { _ = try await SwiftOCADevice.OcaClassManager(deviceDelegate: device) } catch {
-        logger.error("not presenting a class manager: the device refused one: \(error)")
-      }
+    Task { @OcaDevice [self] in await self.createClassManagerIfMissing() }
+  }
+
+  /// MS-05-02 has a class manager, which IS-12 presents the device's as; a device that
+  /// has not created one gets one as the bridge starts.
+  private func createClassManagerIfMissing() async {
+    guard await device.classManager == nil else { return }
+    do { _ = try await SwiftOCADevice.OcaClassManager(deviceDelegate: device) } catch {
+      logger.error("not presenting a class manager: the device refused one: \(error)")
     }
   }
 
