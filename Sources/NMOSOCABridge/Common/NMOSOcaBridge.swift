@@ -71,8 +71,10 @@ public final class NMOSOcaBridge: Sendable {
   let adaptations: NMOSOcaAdaptations
   let controls: [NMOSControl]
   private let host: HostProvider
-  /// The describe in progress, which the next waits for.
+  /// The describe in progress, and whether one was asked for meanwhile, which it then runs
+  /// once more before finishing.
   private var describing: Task<Void, Never>?
+  private var requested = false
   /// Who is told each time the device has been described.
   private nonisolated let described = Mutex([UInt64: AsyncStream<Void>.Continuation]())
   private nonisolated let lastListener = Mutex<UInt64>(0)
@@ -122,7 +124,7 @@ public final class NMOSOcaBridge: Sendable {
     self.labels = labels
     self.logger = logger
     self.host = host
-    walker = NMOSOcaEndpointWalker(device: device, adaptations: adaptations)
+    walker = NMOSOcaEndpointWalker(device: device, adaptations: adaptations, logger: logger)
   }
 
   /// Describes the device, then again whenever what it was described from changes, until
@@ -140,16 +142,28 @@ public final class NMOSOcaBridge: Sendable {
   }
 
   /// Writes the device's current description to the resource store. The store ignores
-  /// what has not changed, so this can be called freely. Each call waits for the one
-  /// before, so an older description is never written over a newer one.
+  /// what has not changed, so this can be called freely. A call made while a describe
+  /// is under way waits for that and one more, shared with every other such call, so an
+  /// older description is never written over a newer one and a burst costs one describe.
   public func describe() async {
-    let previous = describing
-    let current = Task { @OcaDevice in
-      await previous?.value
-      await self.describeOnce()
+    if let describing {
+      requested = true
+      return await describing.value
     }
-    describing = current
-    await current.value
+    let task = Task { @OcaDevice in
+      repeat {
+        self.requested = false
+        await self.describeOnce()
+      } while self.requested
+      self.describing = nil
+    }
+    describing = task
+    await task.value
+  }
+
+  /// Waits for a describe under way, if there is one, so that what it describes can be read.
+  func settle() async {
+    await describing?.value
   }
 
   private func describeOnce() async {

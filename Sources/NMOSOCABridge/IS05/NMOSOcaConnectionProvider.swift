@@ -33,11 +33,13 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
     self.logger = logger
   }
 
-  /// The endpoint as it is now, else as it is once the device is described again: the
-  /// endpoints may have changed since the bridge last described them.
+  /// The endpoint as it is now, else as it is once the device has been described: for
+  /// the first time, or by a describe under way, which the endpoint may have appeared
+  /// since. One the description has not got is not asked about again, so unknown IDs
+  /// cost nothing.
   private func find(_ kind: NMOSResourceKind, _ id: NMOSID) async throws -> NMOSOcaDescribedEndpoint {
     if let found = bridge.endpoint(kind, id) { return found }
-    await bridge.describe()
+    if bridge.ids == nil { await bridge.describe() } else { await bridge.settle() }
     guard let found = bridge.endpoint(kind, id) else { throw NMOSConnectionError.notFound }
     return found
   }

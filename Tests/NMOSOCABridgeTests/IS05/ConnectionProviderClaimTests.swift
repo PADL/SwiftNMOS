@@ -133,6 +133,23 @@ final class ConnectionProviderClaimTests: XCTestCase {
     XCTAssertEqual(removed.status, .notFound)
   }
 
+  /// Anyone can ask for an ID that is not there; it must not have the device described.
+  @OcaDevice
+  func testUnknownIDsDoNotHaveTheDeviceDescribed() async throws {
+    let application = try await TestAes67Application(role: TestDevice.role("Aes67"), deviceDelegate: OcaDevice.shared)
+    application.insert(endpoint: OcaMediaStreamEndpoint(idInternal: 1, direction: .input))
+    let stack = try await ConnectionStack([application])
+    _ = try await stack.wait(for: "receivers") { $0.arrayValue?.count == 1 }
+    try await Task.sleep(for: .milliseconds(300))
+    let described = stack.described.value.withLock { $0 }
+
+    for _ in 0..<20 {
+      let missing = try await stack.send(.GET, "receivers/\(NMOSID(UUID()))/active")
+      XCTAssertEqual(missing.status, .notFound)
+    }
+    XCTAssertEqual(stack.described.value.withLock { $0 }, described)
+  }
+
   @OcaDevice
   func testABridgeThatStopsStopsObservingTheApplications() async throws {
     let manager = try await TestDevice.networkManager()

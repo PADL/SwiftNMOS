@@ -20,6 +20,7 @@ import NMOS
 import NMOSOCABridge
 import SwiftOCA
 import SwiftOCADevice
+import Synchronization
 import XCTest
 
 /// Another controller of the device, for a change a test makes as one would.
@@ -27,6 +28,10 @@ actor TestController: OcaController {
   nonisolated var flags: OcaControllerFlags { [] }
 
   func sendMessages(_ messages: [any Ocp1Message], type messageType: OcaMessageType) async throws {}
+}
+
+final class Counter: Sendable {
+  let value = Mutex(0)
 }
 
 /// The Connection API over the bridge's connection provider, for the applications a test
@@ -40,6 +45,8 @@ final class ConnectionStack {
   let bridge: NMOSOcaBridge
   let api: NMOSConnectionAPI
   let router = NMOSRouter()
+  /// How often the bridge has described the device.
+  nonisolated let described = Counter()
   private var tasks = [Task<Void, Never>]()
 
   init(
@@ -47,8 +54,9 @@ final class ConnectionStack {
     adaptations: NMOSOcaAdaptations = .standard
   ) async throws {
     try await TestDevice.networkManager().networkApplications = applications
-    bridge = NMOSOcaBridge(store: store, adaptations: adaptations) {
-      NMOSOcaHost(seed: ConnectionStack.seed, endpoints: [.init(host: "192.0.2.1", port: 8080)])
+    bridge = NMOSOcaBridge(store: store, adaptations: adaptations) { [described] in
+      described.value.withLock { $0 += 1 }
+      return NMOSOcaHost(seed: ConnectionStack.seed, endpoints: [.init(host: "192.0.2.1", port: 8080)])
     }
     api = NMOSConnectionAPI(provider: bridge.connectionProvider, store: store)
     await api.register(on: router)

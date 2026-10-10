@@ -143,6 +143,24 @@ final class NMOSOcaNodeDescriptionTests: XCTestCase {
     XCTAssertEqual(node?.api.endpoints.map(\.host), ["10.0.0.6"])
   }
 
+  /// Calls made while a describe is under way share the one that follows it.
+  @OcaDevice
+  func testABurstOfDescribesCostsOneMore() async throws {
+    _ = try await TestDevice.networkManager()
+    let slow = SlowHost()
+    let store = NMOSResourceStore()
+    let bridge = NMOSOcaBridge(store: store) { await slow.host() }
+    let first = Task { await bridge.describe() }
+    try await waitFor { slow.calls.withLock { $0 } == 1 }
+
+    let burst = (0..<8).map { _ in Task { await bridge.describe() } }
+    try await Task.sleep(for: .milliseconds(50))
+    slow.open.finish()
+    await first.value
+    for call in burst { await call.value }
+    XCTAssertEqual(slow.calls.withLock { $0 }, 2)
+  }
+
   @OcaDevice
   func testARunningBridgeDescribesAHostChangeItIsToldOf() async throws {
     _ = try await TestDevice.networkManager()
