@@ -169,7 +169,7 @@ without one (a manager, the class manager) has its label kept in an `NMOSOcaLabe
 instead, by object number. No label is an empty one, in either place, as an OCA object's
 is. MS-05-02 also requires that a label persist across a restart: the default store,
 `NMOSOcaMemoryLabelStore`, keeps labels only while the process runs, and a host that
-can persist them passes a store of its own to `NMOSOcaDeviceModel`.
+can persist them passes a store of its own to `NMOSOcaBridge`.
 
 ## Demo
 

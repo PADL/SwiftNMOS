@@ -8,11 +8,12 @@ An [AMWA NMOS](https://specs.amwa.tv/nmos/) node in Swift, and a bridge that pre
   advertisement, the IS-05 Connection API, and the IS-12 control protocol with the
   MS-05-02 model, its standard descriptors generated from the AMWA model files. The
   host supplies the HTTP server (FlyingFox), DNS-SD and a connection provider.
-- **`NMOSOCABridge`** maps a SwiftOCADevice device onto `NMOS`: IS-04 resources from the
-  device's media transport applications, IS-05 through one adaptation per transport (RTP
-  by SDP, Dante by channel subscription, Milan by stream binding), and IS-12 by
-  presenting every AES70 object as an MS-05-02 object, with native NMOS classes where
-  one applies. See [`Sources/NMOSOCABridge/IS12/README.md`](Sources/NMOSOCABridge/IS12/README.md).
+- **`NMOSOCABridge`** maps a SwiftOCADevice device onto `NMOS`. One `NMOSOcaBridge`
+  describes the device as IS-04 resources from its media transport applications, and
+  from that description serves IS-05 through one adaptation per transport (RTP by SDP,
+  Dante by channel subscription, Milan by stream binding) and IS-12 by presenting every
+  AES70 object as an MS-05-02 object, with native NMOS classes where one applies. See
+  [`Sources/NMOSOCABridge/IS12/README.md`](Sources/NMOSOCABridge/IS12/README.md).
 
 The specifications followed are IS-04 v1.3, IS-05 v1.1 and v1.2, IS-12 v1.0 and
 MS-05-02 v1.0.
