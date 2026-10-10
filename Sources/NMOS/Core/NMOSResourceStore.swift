@@ -63,26 +63,6 @@ public actor NMOSResourceStore {
     return node
   }
 
-  public var devices: [NMOSDeviceResource] {
-    resources(.device).compactMap { if case let .device(resource) = $0 { resource } else { nil } }
-  }
-
-  public var sources: [NMOSSourceResource] {
-    resources(.source).compactMap { if case let .source(resource) = $0 { resource } else { nil } }
-  }
-
-  public var flows: [NMOSFlowResource] {
-    resources(.flow).compactMap { if case let .flow(resource) = $0 { resource } else { nil } }
-  }
-
-  public var senders: [NMOSSenderResource] {
-    resources(.sender).compactMap { if case let .sender(resource) = $0 { resource } else { nil } }
-  }
-
-  public var receivers: [NMOSReceiverResource] {
-    resources(.receiver).compactMap { if case let .receiver(resource) = $0 { resource } else { nil } }
-  }
-
   // MARK: Writing
 
   /// Adds the resource, or replaces the one with its ID. The `version` passed in is
@@ -160,17 +140,6 @@ public actor NMOSResourceStore {
       return nil
     }
     guard resource != existing || touch else { return existing.version }
-    resource.version = nextVersion()
-    resources[kind]?[id] = resource
-    notify(.init(kind: kind, id: id, change: .modified))
-    return resource.version
-  }
-
-  /// Gives the resource a new version without changing it, which IS-05 requires when a
-  /// connection is re-activated with the same parameters.
-  @discardableResult
-  public func touch(_ kind: NMOSResourceKind, id: NMOSID) -> NMOSTimestamp? {
-    guard var resource = resources[kind]?[id] else { return nil }
     resource.version = nextVersion()
     resources[kind]?[id] = resource
     notify(.init(kind: kind, id: id, change: .modified))

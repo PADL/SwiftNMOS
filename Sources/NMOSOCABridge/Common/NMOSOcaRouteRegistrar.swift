@@ -17,7 +17,5 @@
 import NMOS
 import SwiftOCADevice
 
-#if canImport(FlyingFox)
 /// The OCA WebSocket endpoint serves HTTP too, so the NMOS APIs can share its port.
 extension OcaFlyingFoxDeviceEndpoint: NMOSRouteRegistrar {}
-#endif

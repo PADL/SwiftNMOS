@@ -458,7 +458,6 @@ public actor NMOSConnectionAPI {
   /// Observes changes the provider signals, so that `/active` and IS-04 show what the
   /// device is doing however it came to be doing it. Runs until the task is cancelled.
   public func run() async {
-    await store.manageSubscriptions()
     let resources = await store.changes()
     await withTaskGroup(of: Void.self) { group in
       group.addTask {

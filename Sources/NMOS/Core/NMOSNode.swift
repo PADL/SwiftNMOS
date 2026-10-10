@@ -70,23 +70,19 @@ public struct NMOSNodeConfiguration: Sendable {
   /// The wait before trying again when no Registration API answers: the first wait,
   /// doubled each time up to the last.
   public let registrationBackoff: ClosedRange<Duration>
-  /// Controls of the host's own, listed after those of the APIs the node serves.
-  public let controls: [NMOSControl]
 
   public init(
     registryURL: URL? = nil,
     peerToPeer: Bool = true,
     heartbeatInterval: Duration = .seconds(5),
     registryDiscoveryTimeout: Duration = .seconds(3),
-    registrationBackoff: ClosedRange<Duration> = .seconds(1)...(.seconds(30)),
-    controls: [NMOSControl] = []
+    registrationBackoff: ClosedRange<Duration> = .seconds(1)...(.seconds(30))
   ) {
     self.registryURL = registryURL
     self.peerToPeer = peerToPeer
     self.heartbeatInterval = heartbeatInterval
     self.registryDiscoveryTimeout = registryDiscoveryTimeout
     self.registrationBackoff = registrationBackoff
-    self.controls = controls
   }
 }
 
@@ -140,13 +136,9 @@ public final class NMOSNode: Sendable {
   }
 
   /// The controls a device of a node with these APIs lists: one for each control API that
-  /// is served, then the host's own. A host needs them before the node exists, to describe
-  /// the device the node is made with.
-  public static func controls(
-    connectionAPI: Bool,
-    deviceModel: Bool,
-    configuration: NMOSNodeConfiguration
-  ) -> [NMOSControl] {
+  /// is served. A host needs them before the node exists, to describe the device the
+  /// node is made with.
+  public static func controls(connectionAPI: Bool, deviceModel: Bool) -> [NMOSControl] {
     // the newest version first, for controllers that take the first Connection API listed
     let connection = !connectionAPI ? [] : NMOSConnectionAPI.versions.reversed().map {
       NMOSControl(type: NMOSConnectionAPI.control($0).type, path: "connection/\($0)/")
@@ -154,7 +146,7 @@ public final class NMOSNode: Sendable {
     let control = !deviceModel ? [] : [
       NMOSControl(type: NcControlProtocol.controlType, path: NcControlProtocol.path, isWebSocket: true),
     ]
-    return connection + control + configuration.controls
+    return connection + control
   }
 
   /// Runs the node's background work until the task is cancelled: registration and

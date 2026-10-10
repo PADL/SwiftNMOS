@@ -22,6 +22,15 @@ import SwiftOCADevice
 import Synchronization
 import XCTest
 
+private extension NMOSOcaObservedProperties {
+  /// The classes declared, and those an object is one of.
+  var classIDs: Set<OcaClassID> { Set(entries.map(\.classID)) }
+
+  func classIDs(of object: SwiftOCADevice.OcaRoot) -> Set<OcaClassID> {
+    Set(entries.filter { $0.matches(object) }.map(\.classID))
+  }
+}
+
 final class NMOSOcaObservedObjectTests: XCTestCase {
   @OcaDevice
   private var properties: NMOSOcaObservedProperties { NMOSOcaAdaptations.standard.observedProperties }

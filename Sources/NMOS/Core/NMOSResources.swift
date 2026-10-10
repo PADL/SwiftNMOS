@@ -637,18 +637,6 @@ public enum NMOSResource: Sendable, Hashable {
       }
     }
   }
-
-  /// Decodes a resource whose kind is known from where it was found.
-  public init(kind: NMOSResourceKind, from decoder: any Decoder) throws {
-    self = switch kind {
-    case .node: try .node(NMOSNodeResource(from: decoder))
-    case .device: try .device(NMOSDeviceResource(from: decoder))
-    case .source: try .source(NMOSSourceResource(from: decoder))
-    case .flow: try .flow(NMOSFlowResource(from: decoder))
-    case .sender: try .sender(NMOSSenderResource(from: decoder))
-    case .receiver: try .receiver(NMOSReceiverResource(from: decoder))
-    }
-  }
 }
 
 extension NMOSResource: Encodable {

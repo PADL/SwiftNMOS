@@ -21,14 +21,14 @@ import SwiftOCADevice
 /// The properties the bridge reads of each class, a change to any of which has it
 /// describe the device again.
 public struct NMOSOcaObservedProperties: Sendable {
-  private struct Entry: Sendable {
+  struct Entry: Sendable {
     let classID: OcaClassID
     /// Whether an object is of the Swift class, as several may share one class ID.
     let matches: @Sendable (SwiftOCADevice.OcaRoot) -> Bool
     let properties: Set<OcaPropertyID>
   }
 
-  private var entries: [Entry]
+  let entries: [Entry]
 
   public static let empty = NMOSOcaObservedProperties(entries: [])
 
@@ -50,13 +50,6 @@ public struct NMOSOcaObservedProperties: Sendable {
     let matching = entries.filter { $0.matches(object) }
     // properties above the deepest class declared are a subclass's
     return (matching.reduce(into: []) { $0.formUnion($1.properties) }, matching.map(\.classID.defLevel).max() ?? 0)
-  }
-
-  /// The classes declared, and those an object is one of; for tests.
-  var classIDs: Set<OcaClassID> { Set(entries.map(\.classID)) }
-
-  func classIDs(of object: SwiftOCADevice.OcaRoot) -> Set<OcaClassID> {
-    Set(entries.filter { $0.matches(object) }.map(\.classID))
   }
 }
 

@@ -156,7 +156,7 @@ private enum NMOSDeviceApp {
     // the bridge is made first, so the connection provider and device model take its IDs
     let bridge = NMOSOcaBridge(
       store: store,
-      controls: NMOSNode.controls(connectionAPI: true, deviceModel: true, configuration: configuration),
+      controls: NMOSNode.controls(connectionAPI: true, deviceModel: true),
       logger: logger
     ) {
       NMOSOcaHost(
