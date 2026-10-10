@@ -345,9 +345,7 @@ final class RTPConnectionTests: XCTestCase {
   func testDescribingTheDeviceAgainDoesNotWriteOverAConnection() async throws {
     let application = try await makeApplication()
     let stack = try await ConnectionStack([application])
-    let bridge = NMOSOcaBridge(store: stack.store) {
-      NMOSOcaHost(seed: "is05-tests", endpoints: [.init(host: "192.0.2.1", port: 8080)])
-    }
+    let bridge = stack.bridge
     await bridge.describe()
     let receiver = stack.id(application, 1)
     let peer = NMOSID(UUID(version5: "peer", namespace: NMOSOcaResourceIDs.namespace))

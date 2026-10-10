@@ -134,24 +134,25 @@ final class ConnectionProviderClaimTests: XCTestCase {
   }
 
   @OcaDevice
-  func testAChangeStreamThatEndsStopsObservingTheApplications() async throws {
+  func testABridgeThatStopsStopsObservingTheApplications() async throws {
     let manager = try await TestDevice.networkManager()
     manager.networkApplications = try await [TestDevice.makeApplication("Observed")]
     var counting: CountingAdaptation? = CountingAdaptation()
     weak let adaptation = counting
-    var provider: NMOSOcaConnectionProvider? = try NMOSOcaConnectionProvider(
-      adaptations: NMOSOcaAdaptations([XCTUnwrap(counting)])
-    ) { ConnectionStack.ids }
+    var bridge: NMOSOcaBridge? = try NMOSOcaBridge(
+      store: NMOSResourceStore(), adaptations: NMOSOcaAdaptations([XCTUnwrap(counting)])
+    ) {
+      NMOSOcaHost(seed: ConnectionStack.seed, endpoints: [.init(host: "192.0.2.1", port: 8080)])
+    }
     counting = nil
-    // reading the changes observes the applications, with the adaptations' reads
-    let changes = try XCTUnwrap(provider).connectionChanges()
-    let reader = Task { for await _ in changes {} }
+    // running observes the applications, with the adaptations' reads
+    let running = Task { [bridge] in try await bridge?.run() }
     try await Task.sleep(for: .milliseconds(100))
     XCTAssertGreaterThan(adaptation?.readsAsked ?? 0, 0)
 
     // whatever observes them holds the adaptations, so they go once nothing does
-    reader.cancel()
-    provider = nil
+    running.cancel()
+    bridge = nil
     for _ in 0..<100 where adaptation != nil {
       try await Task.sleep(for: .milliseconds(10))
     }

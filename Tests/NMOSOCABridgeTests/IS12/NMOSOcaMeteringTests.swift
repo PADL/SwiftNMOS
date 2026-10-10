@@ -48,6 +48,7 @@ private enum MeteringFixture {
   private(set) static var meter: ClippingMeter!
   private(set) static var temperature: SwiftOCADevice.OcaTemperatureSensor!
   private(set) static var application: SwiftOCADevice.OcaMediaTransportApplication!
+  private(set) static var bridge: NMOSOcaBridge!
   private(set) static var model: NMOSOcaDeviceModel!
 
   static func make() async throws {
@@ -65,7 +66,10 @@ private enum MeteringFixture {
     for object in [meter, temperature, application] as [SwiftOCADevice.OcaRoot] {
       try await block.add(actionObject: object)
     }
-    model = NMOSOcaDeviceModel(device: device)
+    bridge = NMOSOcaBridge(store: NMOSResourceStore(), device: device) {
+      NMOSOcaHost(seed: "metering-tests", endpoints: [.init(host: "192.0.2.1", port: 8080)])
+    }
+    model = bridge.deviceModel
   }
 }
 

@@ -136,6 +136,7 @@ private enum MethodFixture {
   private(set) static var dial: VendorDial!
   private(set) static var vault: Vault!
   private(set) static var bankVault: BankVault!
+  private(set) static var bridge: NMOSOcaBridge!
   private(set) static var model: NMOSOcaDeviceModel!
 
   static func make() async throws {
@@ -156,7 +157,10 @@ private enum MethodFixture {
     bankVault = try await BankVault(role: "BankVault", deviceDelegate: device, addToRootBlock: false)
     try await vaults.add(actionObject: vault)
     try await vaults.add(actionObject: bankVault)
-    model = NMOSOcaDeviceModel(device: device)
+    bridge = NMOSOcaBridge(store: NMOSResourceStore(), device: device) {
+      NMOSOcaHost(seed: "methods-tests", endpoints: [.init(host: "192.0.2.1", port: 8080)])
+    }
+    model = bridge.deviceModel
   }
 }
 

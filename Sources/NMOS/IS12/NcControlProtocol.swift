@@ -26,6 +26,8 @@ public enum NcControlProtocol {
   public static let path = "ncp/\(version)"
   /// The control type a device's IS-04 `controls` entry for this endpoint carries.
   public static let controlType = "urn:x-nmos:control:ncp/\(version)"
+  /// The control a device whose node serves this protocol lists.
+  public static let control = NMOSControl(type: controlType, path: path, isWebSocket: true)
 
   static func register(on router: NMOSRouter, model: any NcDeviceModel, logger: Logger) async {
     await router.add(.GET, path) { request in

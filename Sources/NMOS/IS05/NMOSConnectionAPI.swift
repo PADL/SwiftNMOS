@@ -34,6 +34,12 @@ public actor NMOSConnectionAPI {
     ("urn:x-nmos:control:sr-ctrl/\(version)", "/\(NMOSRouter.root)/connection/\(version)/")
   }
 
+  /// The controls a device whose node serves this API lists, the newest version first,
+  /// for controllers that take the first Connection API listed.
+  public static var controls: [NMOSControl] {
+    versions.reversed().map { NMOSControl(type: control($0).type, path: "connection/\($0)/") }
+  }
+
   private struct Key: Hashable, Sendable {
     let kind: NMOSResourceKind
     let id: NMOSID

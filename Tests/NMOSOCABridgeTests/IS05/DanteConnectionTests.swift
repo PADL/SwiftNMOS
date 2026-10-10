@@ -95,7 +95,7 @@ final class DanteConnectionTests: XCTestCase {
     let (application, stack) = try await makeStack()
     let sender = stack.id(application, 1001)
     let signals = Mutex(0)
-    let changes = stack.provider.connectionChanges()
+    let changes = stack.bridge.connectionProvider.connectionChanges()
     let task = Task {
       for await _ in changes { signals.withLock { $0 += 1 } }
     }

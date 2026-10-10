@@ -135,20 +135,6 @@ public final class NMOSNode: Sendable {
     await router.attach(to: registrar)
   }
 
-  /// The controls a device of a node with these APIs lists: one for each control API that
-  /// is served. A host needs them before the node exists, to describe the device the
-  /// node is made with.
-  public static func controls(connectionAPI: Bool, deviceModel: Bool) -> [NMOSControl] {
-    // the newest version first, for controllers that take the first Connection API listed
-    let connection = !connectionAPI ? [] : NMOSConnectionAPI.versions.reversed().map {
-      NMOSControl(type: NMOSConnectionAPI.control($0).type, path: "connection/\($0)/")
-    }
-    let control = !deviceModel ? [] : [
-      NMOSControl(type: NcControlProtocol.controlType, path: NcControlProtocol.path, isWebSocket: true),
-    ]
-    return connection + control
-  }
-
   /// Runs the node's background work until the task is cancelled: registration and
   /// heartbeats with a Registration API, or peer-to-peer advertisement without one.
   public func run() async throws {

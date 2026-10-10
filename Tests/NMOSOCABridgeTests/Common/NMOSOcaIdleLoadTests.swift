@@ -79,7 +79,7 @@ final class NMOSOcaIdleLoadTests: XCTestCase {
     defer { running.cancel() }
     // the Connection API reads every connection again at each change it is told of
     let connections = Task {
-      for await _ in NMOSOcaEndpointWalker(device: device).changes() { read.withLock { $0 += 1 } }
+      for await _ in bridge.connectionProvider.connectionChanges() { read.withLock { $0 += 1 } }
     }
     defer { connections.cancel() }
 

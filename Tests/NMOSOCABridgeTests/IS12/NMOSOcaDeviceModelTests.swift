@@ -189,8 +189,10 @@ private enum Fixture {
   private(set) static var fixed: FixedLabelGain!
   private(set) static var locked: LockedLabelGain!
   private(set) static var localOnly: LocalOnlyAgent!
+  private(set) static var bridge: NMOSOcaBridge!
   private(set) static var model: NMOSOcaDeviceModel!
-  nonisolated static let ids = NMOSOcaResourceIDs(seed: "control-model-tests")
+  nonisolated static let seed = "control-model-tests"
+  nonisolated static let ids = NMOSOcaResourceIDs(seed: seed)
 
   static func make() async throws {
     guard model == nil else { return }
@@ -211,7 +213,12 @@ private enum Fixture {
     for object in [gain, trimmed, identify, momentary, fixed, locked, localOnly] as [SwiftOCADevice.OcaRoot] {
       try await block.add(actionObject: object)
     }
-    model = NMOSOcaDeviceModel(device: device, resourceIDs: { ids })
+    bridge = NMOSOcaBridge(store: NMOSResourceStore(), device: device) {
+      NMOSOcaHost(seed: seed, endpoints: [.init(host: "192.0.2.1", port: 8080)])
+    }
+    // the resources the objects stand for are those the bridge has described
+    await bridge.describe()
+    model = bridge.deviceModel
   }
 }
 
@@ -797,7 +804,7 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let mine = try XCTUnwrap(model.source.controller(of: session))
     let theirs = try XCTUnwrap(model.source.controller(of: other))
     XCTAssertFalse(mine === theirs)
-    let listed = await model.source.endpoint.controllers
+    let listed = await Fixture.bridge.walker.observer.endpoint.controllers
     XCTAssertTrue(listed.contains { $0 === mine } && listed.contains { $0 === theirs })
 
     // a lock one session's controller takes binds the other session, and not itself
@@ -839,13 +846,13 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
     let manager = await OcaDevice.shared.subscriptionManager
     let subscriptionManager = try XCTUnwrap(manager)
     XCTAssertTrue(subscriptionManager.isSubscribed(controller, toEventsFrom: Fixture.gain.objectNumber))
-    let before = await model.source.endpoint.controllers
+    let before = await Fixture.bridge.walker.observer.endpoint.controllers
     XCTAssertTrue(before.contains { $0 === controller })
 
     await model.sessionEnded(ending)
     let gone = model.source.controller(of: ending)
     XCTAssertNil(gone)
-    let after = await model.source.endpoint.controllers
+    let after = await Fixture.bridge.walker.observer.endpoint.controllers
     XCTAssertFalse(after.contains { $0 === controller })
     // its events are over: nothing the device does now reaches it
     Fixture.gain.label = "After \(UUID().uuidString)"
@@ -1073,14 +1080,18 @@ final class NMOSOcaDeviceModelTests: XCTestCase {
   }
 
   @OcaDevice
-  func testAModelThatGoesAwayTakesItsEndpointFromTheDevice() async throws {
-    var model: NMOSOcaDeviceModel? = NMOSOcaDeviceModel(device: OcaDevice.shared)
-    // looking at the tree gives the device the endpoint
-    let root = await model?.source.identity(of: 1)
-    let members = try await model?.source.members(of: XCTUnwrap(root))
-    XCTAssertFalse(members?.isEmpty ?? true)
-    let endpoint = try XCTUnwrap(model?.source.endpoint)
-    model = nil
+  func testABridgeThatGoesAwayTakesItsEndpointFromTheDevice() async throws {
+    var bridge: NMOSOcaBridge? = NMOSOcaBridge(store: NMOSResourceStore()) {
+      NMOSOcaHost(seed: "gone", endpoints: [.init(host: "192.0.2.1", port: 8080)])
+    }
+    // a session reading the tree gives the device the endpoint
+    let label = await bridge?.deviceModel.handleCommand(
+      NcCommand(oid: 1, methodID: .init(level: 1, index: 1), arguments: ["id": NcElementID.userLabel.json]),
+      session: NcSession(peer: .ip("192.0.2.20", port: 50000))
+    )
+    XCTAssertEqual(label?.status, .ok)
+    let endpoint = try XCTUnwrap(bridge?.walker.observer.endpoint)
+    bridge = nil
 
     // the device lets go of it a moment later; then it can be given it again
     var removed = false

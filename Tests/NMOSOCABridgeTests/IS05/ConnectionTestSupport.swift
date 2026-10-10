@@ -29,30 +29,33 @@ actor TestController: OcaController {
   func sendMessages(_ messages: [any Ocp1Message], type messageType: OcaMessageType) async throws {}
 }
 
-/// The Connection API over the OCA connection provider, for the applications a test
+/// The Connection API over the bridge's connection provider, for the applications a test
 /// gives the shared device: what a controller sees of them through IS-05.
 @OcaDevice
 final class ConnectionStack {
-  nonisolated static let ids = NMOSOcaResourceIDs(seed: "is05-tests")
+  nonisolated static let seed = "is05-tests"
+  nonisolated static let ids = NMOSOcaResourceIDs(seed: seed)
 
   let store = NMOSResourceStore()
-  let provider: NMOSOcaConnectionProvider
+  let bridge: NMOSOcaBridge
   let api: NMOSConnectionAPI
   let router = NMOSRouter()
-  private var task: Task<Void, Never>?
+  private var tasks = [Task<Void, Never>]()
 
   init(
     _ applications: [SwiftOCADevice.OcaMediaTransportApplication],
     adaptations: NMOSOcaAdaptations = .standard
   ) async throws {
     try await TestDevice.networkManager().networkApplications = applications
-    provider = NMOSOcaConnectionProvider(adaptations: adaptations) { ConnectionStack.ids }
-    api = NMOSConnectionAPI(provider: provider, store: store)
+    bridge = NMOSOcaBridge(store: store, adaptations: adaptations) {
+      NMOSOcaHost(seed: ConnectionStack.seed, endpoints: [.init(host: "192.0.2.1", port: 8080)])
+    }
+    api = NMOSConnectionAPI(provider: bridge.connectionProvider, store: store)
     await api.register(on: router)
-    task = Task { [api] in await api.run() }
+    tasks = [Task { [bridge] in try? await bridge.run() }, Task { [api] in await api.run() }]
   }
 
-  deinit { task?.cancel() }
+  deinit { tasks.forEach { $0.cancel() } }
 
   func id(_ application: SwiftOCADevice.OcaMediaTransportApplication, _ endpoint: OcaMediaStreamEndpointID) -> NMOSID {
     Self.ids.id(endpoint >= 1000 ? .sender : .receiver, application: application.objectNumber, endpoint: endpoint)

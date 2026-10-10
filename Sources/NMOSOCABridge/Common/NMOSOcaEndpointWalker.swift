@@ -60,7 +60,8 @@ public struct NMOSOcaEndpoint: Sendable {
 public final class NMOSOcaEndpointWalker: Sendable {
   private let device: OcaDevice
   private let adaptations: NMOSOcaAdaptations
-  private let observer: NMOSOcaObserver
+  /// The controller the walker hears of changes as, which the bridge's other parts share.
+  let observer: NMOSOcaObserver
 
   /// `adaptations` are those whose reads the consumer makes, which are observed too.
   public nonisolated init(device: OcaDevice = .shared, adaptations: NMOSOcaAdaptations = .standard) {

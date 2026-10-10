@@ -153,12 +153,8 @@ private enum NMOSDeviceApp {
     let configuration = NMOSNodeConfiguration(registryURL: options.registryURL)
     let store = NMOSResourceStore()
     let port = Int(options.port)
-    // the bridge is made first, so the connection provider and device model take its IDs
-    let bridge = NMOSOcaBridge(
-      store: store,
-      controls: NMOSNode.controls(connectionAPI: true, deviceModel: true),
-      logger: logger
-    ) {
+    // the bridge describes the device to the store, and serves IS-05 and IS-12 from that
+    let bridge = NMOSOcaBridge(store: store, logger: logger) {
       NMOSOcaHost(
         seed: host.macAddress,
         hostname: ProcessInfo.processInfo.hostName,
@@ -166,11 +162,11 @@ private enum NMOSDeviceApp {
         interfaces: [.init(name: host.name, chassisID: nil, portID: host.macAddress)]
       )
     }
-    let node = NMOSNode(
+    let node = await NMOSNode(
       configuration: configuration,
       store: store,
-      connectionProvider: NMOSOcaConnectionProvider(logger: logger) { await bridge.ids },
-      deviceModel: NMOSOcaDeviceModel(logger: logger) { await bridge.ids },
+      connectionProvider: bridge.connectionProvider,
+      deviceModel: bridge.deviceModel,
       discovery: NMOSOcaServiceDiscovery(),
       // a node operating peer-to-peer has no use for a registry
       httpClient: options.peerToPeer ? nil : NMOSFlyingFoxHTTPClient(timeout: configuration.heartbeatInterval),

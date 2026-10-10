@@ -27,23 +27,6 @@ import Synchronization
 public typealias NMOSOcaDeviceModel = NcObjectModel<NMOSOcaObjectSource>
 
 public extension NcObjectModel where Source == NMOSOcaObjectSource {
-  /// `resourceIDs` gives the IDs of the device's IS-04 resources once they are known,
-  /// so that objects can point to the resources they stand for. `labels` keeps the user
-  /// labels the OCA objects cannot.
-  convenience init(
-    device: OcaDevice = .shared,
-    adaptations: NMOSOcaAdaptations = .standard,
-    labels: any NMOSOcaLabelStore = NMOSOcaMemoryLabelStore(),
-    logger: Logger = Logger(label: "com.padl.NMOSOCABridge"),
-    resourceIDs: @escaping NMOSOcaObjectSource.ResourceIDs = { nil }
-  ) {
-    self.init(
-      source: NMOSOcaObjectSource(
-        device: device, adaptations: adaptations, labels: labels, logger: logger, resourceIDs: resourceIDs
-      )
-    )
-  }
-
   /// Where the class manager is, which is where the bridge makes it.
   var classManagerOid: NcOid { source.classManagerOid }
 }
@@ -54,12 +37,12 @@ public extension NcObjectModel where Source == NMOSOcaObjectSource {
 ///
 /// Each control session is a controller of its own to the device, with the session's
 /// peer as its identity: what a session may do, lock and hear of is what the device
-/// allows a controller at that address, never what it allows the bridge.
+/// allows a controller at that address, never what it allows the bridge. The bridge's
+/// description says which IS-04 resources an object stands for.
 @OcaDevice
 public final class NMOSOcaObjectSource: NcObjectSource {
   /// An object is known by its OCA object.
   public typealias Object = SwiftOCADevice.OcaRoot
-  public typealias ResourceIDs = @Sendable () async -> NMOSOcaResourceIDs?
 
   /// A control session as the device sees it, and what it has been told so far.
   private struct Session {
@@ -71,52 +54,31 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     var notified = [NcOid: [NcElementID: NMOSJSONValue]]()
   }
 
-  private let device: OcaDevice
+  private let bridge: NMOSOcaBridge
+  private var device: OcaDevice { bridge.device }
   /// The oid the class manager is presented under.
   nonisolated var classManagerOid: NcOid { NMOSOcaControlMapping.oid(of: OcaClassManagerONo) }
-  private let adaptations: NMOSOcaAdaptations
   private let classes: NMOSOcaControlClasses
   private let labels: any NMOSOcaLabelStore
   private let logger: Logger
-  private let resourceIDs: ResourceIDs
 
   private var sessions = [NcSession: Session]()
-  /// Where the device finds the sessions' controllers.
-  let endpoint = NMOSOcaControlEndpoint()
-  /// Giving the device the endpoint, which every caller waits for.
-  private var registration: Task<Void, Never>?
   /// Each block's members' roles, with the members they were worked out for.
   private var roles = [OcaONo: (members: [OcaONo], roles: [OcaONo: String])]()
   /// Each session's event stream, with an ID that tells it from a later one for the session.
   private nonisolated let listeners = Mutex([NcSession: (id: UUID, continuation: AsyncStream<NcNotification>.Continuation)]())
 
-  nonisolated init(
-    device: OcaDevice,
-    adaptations: NMOSOcaAdaptations,
-    labels: any NMOSOcaLabelStore,
-    logger: Logger,
-    resourceIDs: @escaping ResourceIDs
-  ) {
-    self.device = device
-    self.adaptations = adaptations
+  nonisolated init(bridge: NMOSOcaBridge, labels: any NMOSOcaLabelStore, logger: Logger) {
+    self.bridge = bridge
     self.labels = labels
     self.logger = logger
-    self.resourceIDs = resourceIDs
     classes = NMOSOcaControlClasses(logger: logger)
     // MS-05-02 has a class manager, which IS-12 presents the device's as; a device that
     // has not created one gets one as the bridge starts
-    Task { @OcaDevice [device] in
+    Task { @OcaDevice [device = bridge.device] in
       guard await device.classManager == nil else { return }
       _ = try? await SwiftOCADevice.OcaClassManager(deviceDelegate: device)
     }
-  }
-
-  /// The device holds the endpoint, and through it every subscription of the sessions'
-  /// controllers and the bridge's own; they go with it.
-  deinit {
-    guard registration != nil else { return }
-    let device = device, endpoint = endpoint
-    Task { @OcaDevice in try? await device.remove(endpoint: endpoint) }
   }
 
   // MARK: - The tree
@@ -203,17 +165,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     return managers + container.actionObjects.map(\.objectNumber)
   }
 
-  private func registerEndpoint() async {
-    if let registration { return await registration.value }
-    let registration = Task { @OcaDevice [device, endpoint, logger] in
-      do { try await device.add(endpoint: endpoint) } catch {
-        logger.error("not receiving events: the device refused the NMOS control endpoint: \(error)")
-      }
-    }
-    self.registration = registration
-    await registration.value
-  }
-
   public func members(of block: Identity) async -> [Identity] {
     let roles = await roles(in: block.object)
     return await members(of: block.object).map { member in
@@ -231,7 +182,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// for the device manager, and a transport application's senders and receivers.
   public func touchpoints(of identity: Identity) async -> [NcTouchpoint]? {
     let object = identity.object
-    guard let ids = await resourceIDs() else { return nil }
+    guard let ids = bridge.ids else { return nil }
     if object.objectNumber == OcaRootBlockONo {
       return [NcTouchpoint(resourceType: "device", id: ids.device)]
     }
@@ -242,11 +193,10 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     var touchpoints = [NcTouchpoint]()
     for endpoint in application.endpoints {
       let endpoint = NMOSOcaEndpoint(application: application, endpoint: endpoint)
-      // only endpoints an adaptation presents are IS-04 resources
-      guard await adaptations.adaptation(for: endpoint) != nil else { continue }
-      touchpoints.append(NcTouchpoint(
-        resourceType: endpoint.isSender ? "sender" : "receiver", id: endpoint.id(endpoint.kind, in: ids)
-      ))
+      let id = endpoint.id(endpoint.kind, in: ids)
+      // only endpoints the bridge describes are IS-04 resources
+      guard bridge.endpoints[.init(kind: endpoint.kind, id: id)] != nil else { continue }
+      touchpoints.append(NcTouchpoint(resourceType: endpoint.isSender ? "sender" : "receiver", id: id))
     }
     return touchpoints.isEmpty ? nil : touchpoints
   }
@@ -512,14 +462,11 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// The controller a session is to the device, made when the session is first heard of.
   private func controller(for session: NcSession) async -> NMOSOcaControlController {
     if let known = sessions[session] { return known.controller }
-    await registerEndpoint()
-    // another call for the session may have made it while this one waited
-    if let known = sessions[session] { return known.controller }
     let controller = NMOSOcaControlController(session: session) { [weak self] objectNumber, property in
       await self?.changed(property, of: objectNumber, session: session)
     }
     sessions[session] = Session(controller: controller)
-    endpoint.add(controller)
+    await bridge.walker.observer.add(controller)
     logger.debug("\(controller) is a controller of the device")
     return controller
   }
@@ -534,7 +481,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   public func sessionEnded(_ session: NcSession) async {
     listeners.withLock { $0.removeValue(forKey: session) }?.continuation.finish()
     guard let ended = sessions.removeValue(forKey: session) else { return }
-    endpoint.remove(ended.controller)
+    bridge.walker.observer.remove(ended.controller)
     await device.expire(controller: ended.controller)
     logger.debug("\(ended.controller) is gone")
   }

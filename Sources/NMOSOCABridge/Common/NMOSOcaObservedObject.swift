@@ -56,10 +56,14 @@ public struct NMOSOcaObservedProperties: Sendable {
 /// The bridge's own controller to the device, which hears of changes to the objects it
 /// watches as any controller does: subscribed to their PropertyChanged events through
 /// the subscription manager, so the device tells it of a change, and only of a change.
+/// Its endpoint is the one the device knows the bridge's controllers by, the IS-12
+/// sessions' included.
 @OcaDevice
 final class NMOSOcaObserver {
   private let device: OcaDevice
-  private let endpoint = NMOSOcaControlEndpoint()
+  let endpoint = NMOSOcaControlEndpoint()
+  /// Giving the device the endpoint, which every controller added waits for.
+  private var registration: Task<Void, Never>?
   private var controller: NMOSOcaControlController?
   private var watchers = [OcaONo: [Int: AsyncStream<OcaPropertyID>.Continuation]]()
   private var lastWatcher = 0
@@ -68,10 +72,28 @@ final class NMOSOcaObserver {
     self.device = device
   }
 
+  /// The device holds the endpoint, and through it every subscription of its controllers;
+  /// they go with it.
   deinit {
-    guard controller != nil else { return }
+    guard registration != nil else { return }
     let device = device, endpoint = endpoint
     Task { @OcaDevice in try? await device.remove(endpoint: endpoint) }
+  }
+
+  /// Makes the controller one of the device's, through the endpoint.
+  func add(_ controller: NMOSOcaControlController) async {
+    if let registration {
+      await registration.value
+    } else {
+      let registration = Task { @OcaDevice [device, endpoint] in _ = try? await device.add(endpoint: endpoint) }
+      self.registration = registration
+      await registration.value
+    }
+    endpoint.add(controller)
+  }
+
+  func remove(_ controller: NMOSOcaControlController) {
+    endpoint.remove(controller)
   }
 
   /// The object's property changes from now on, until the stream is let go of.
@@ -109,8 +131,7 @@ final class NMOSOcaObserver {
       await self?.changed(property, of: objectNumber)
     }
     self.controller = controller
-    endpoint.add(controller)
-    try? await device.add(endpoint: endpoint)
+    await add(controller)
     return controller
   }
 

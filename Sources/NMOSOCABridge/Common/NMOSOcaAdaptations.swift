@@ -83,7 +83,7 @@ public struct NMOSOcaAdaptations: Sendable {
   /// of every endpoint, and what each adaptation reads for the endpoints it claims.
   @OcaDevice
   var observedProperties: NMOSOcaObservedProperties {
-    adaptations.reduce(NMOSOcaEndpointWalker.observedProperties + NMOSOcaBridge.observedProperties + NMOSOcaConnectionProvider.observedProperties) {
+    adaptations.reduce(NMOSOcaEndpointWalker.observedProperties + NMOSOcaBridge.observedProperties) {
       $0 + $1.observedProperties
     }
   }

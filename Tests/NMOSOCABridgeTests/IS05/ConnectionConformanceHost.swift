@@ -78,14 +78,20 @@ final class ConnectionConformanceHost: XCTestCase {
     let rtpOnly = environment["NMOS_CONFORMANCE_RTP_ONLY"] != nil
     manager.networkApplications = rtpOnly ? [aes67] : [aes67, dante, milan]
 
-    let node = NMOSNode(connectionProvider: NMOSOcaConnectionProvider { ConnectionStack.ids })
+    let store = NMOSResourceStore()
+    let bridge = NMOSOcaBridge(store: store) {
+      NMOSOcaHost(seed: ConnectionStack.seed, endpoints: [.init(host: "127.0.0.1", port: Int(port))])
+    }
+    let node = NMOSNode(store: store, connectionProvider: bridge.connectionProvider)
     let server = try HTTPServer(address: .inet(ip4: "0.0.0.0", port: port))
     await node.attach(to: server)
     let serving = Task { try await server.run() }
+    let describing = Task { try await bridge.run() }
     let running = Task { try await node.run() }
     try await server.waitUntilListening()
     try await Task.sleep(for: .seconds(seconds))
     running.cancel()
+    describing.cancel()
     await server.stop()
     serving.cancel()
   }

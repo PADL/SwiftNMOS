@@ -20,148 +20,60 @@ import NMOS
 import SwiftOCA
 import SwiftOCADevice
 
-/// The stream endpoints of an OCA device as IS-05 connections. Each endpoint is read and
-/// changed through the adaptation that claims it, so the provider itself knows nothing
-/// of any one transport.
+/// The stream endpoints of an OCA device as IS-05 connections, as the bridge last
+/// described them. Each endpoint is read and changed through the adaptation that claims
+/// it, so the provider itself knows nothing of any one transport.
 @OcaDevice
 public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
-  public typealias IDProvider = @Sendable () async -> NMOSOcaResourceIDs?
-
-  private struct Key: Hashable {
-    let kind: NMOSResourceKind
-    let id: NMOSID
-  }
-
-  /// Which adaptation has an endpoint. Deciding it means asking each adaptation in turn,
-  /// and an adaptation may have to ask the device, so it is decided once and kept.
-  private struct Claim {
-    let application: SwiftOCADevice.OcaMediaTransportApplication
-    let endpointID: OcaMediaStreamEndpointID
-    let adaptation: any NMOSOcaTransportAdaptation
-  }
-
-  private struct Claims {
-    let ids: NMOSOcaResourceIDs
-    let made: ContinuousClock.Instant
-    let claims: [Key: Claim]
-  }
-
-  /// A bound on how long claims are kept, for whatever changes one without a property
-  /// of the applications or their interfaces changing.
-  private static let maximumClaimAge = Duration.seconds(30)
-
-  private var claims: Claims?
-  /// Counts invalidations, so that claims decided across one are not kept.
-  private var generation: UInt64 = 0
-
-  private let walker: NMOSOcaEndpointWalker
-  private let adaptations: NMOSOcaAdaptations
-  private let device: OcaDevice
+  private let bridge: NMOSOcaBridge
   private let logger: Logger
-  private let ids: IDProvider
 
-  /// `ids` gives the IDs the device's resources are known by, which is what the bridge
-  /// describing the device to IS-04 derived; until it has, there are no connections.
-  public nonisolated init(
-    adaptations: NMOSOcaAdaptations = .standard,
-    device: OcaDevice = .shared,
-    logger: Logger = Logger(label: "com.padl.NMOSOCABridge.Connection"),
-    ids: @escaping IDProvider
-  ) {
-    self.adaptations = adaptations
-    self.device = device
+  init(bridge: NMOSOcaBridge, logger: Logger) {
+    self.bridge = bridge
     self.logger = logger
-    self.ids = ids
-    walker = NMOSOcaEndpointWalker(device: device, adaptations: adaptations)
   }
 
-  /// The endpoints, and the session agents observed below.
-  static let observedProperties = NMOSOcaObservedProperties.of(SwiftOCADevice.OcaMediaTransportApplication.self, [
-    .init(defLevel: 3, propertyIndex: 10), // endpoints
-    .init(defLevel: 3, propertyIndex: 13), // transportSessionControlAgentONos
-  ])
-
-  // MARK: - Finding endpoints
-
-  /// The claims on the device's endpoints, decided again at each signal of
-  /// `connectionChanges()`, when an endpoint is not found, or once they are too old.
-  /// Every call of the Connection API comes through here, and one request makes several.
-  private func claimed() async -> [Key: Claim] {
-    guard let ids = await ids() else { return [:] }
-    if let claims, claims.ids == ids, claims.made.duration(to: .now) < Self.maximumClaimAge {
-      return claims.claims
-    }
-    let started = generation
-    var decided = [Key: Claim]()
-    for endpoint in await walker.endpoints {
-      guard let adaptation = await adaptations.adaptation(for: endpoint) else { continue }
-      decided[Key(kind: endpoint.kind, id: endpoint.id(endpoint.kind, in: ids))] = Claim(
-        application: endpoint.application, endpointID: endpoint.endpoint.idInternal, adaptation: adaptation
-      )
-    }
-    // something changed while the adaptations were being asked, so this is not kept
-    if generation == started { claims = Claims(ids: ids, made: .now, claims: decided) }
-    return decided
-  }
-
-  private func invalidate() {
-    claims = nil
-    generation &+= 1
-  }
-
-  /// The endpoint a claim is on, as its application has it now.
-  private func endpoint(of claim: Claim) -> NMOSOcaEndpoint? {
-    NMOSOcaEndpoint(application: claim.application, id: claim.endpointID)
-  }
-
-  private func find(
-    _ kind: NMOSResourceKind,
-    _ id: NMOSID
-  ) async throws -> (endpoint: NMOSOcaEndpoint, adaptation: any NMOSOcaTransportAdaptation) {
-    let key = Key(kind: kind, id: id)
-    if let claim = await claimed()[key], let endpoint = endpoint(of: claim) {
-      return (endpoint, claim.adaptation)
-    }
-    // not known, or gone: the endpoints may have changed since the claims were decided
-    invalidate()
-    guard let claim = await claimed()[key], let endpoint = endpoint(of: claim) else {
-      throw NMOSConnectionError.notFound
-    }
-    return (endpoint, claim.adaptation)
+  /// The endpoint as it is now, else as it is once the device is described again: the
+  /// endpoints may have changed since the bridge last described them.
+  private func find(_ kind: NMOSResourceKind, _ id: NMOSID) async throws -> NMOSOcaDescribedEndpoint {
+    if let found = bridge.endpoint(kind, id) { return found }
+    await bridge.describe()
+    guard let found = bridge.endpoint(kind, id) else { throw NMOSConnectionError.notFound }
+    return found
   }
 
   // MARK: - NMOSConnectionProvider
 
   public func connections(_ kind: NMOSResourceKind) async -> [NMOSID] {
-    await claimed().keys.filter { $0.kind == kind }.map(\.id).sorted()
+    bridge.endpoints.keys.filter { $0.kind == kind }.map(\.id).sorted()
   }
 
   public func transportType(_ kind: NMOSResourceKind, id: NMOSID) async throws -> String {
-    let (endpoint, adaptation) = try await find(kind, id)
-    return await adaptation.transportType(of: endpoint)
+    let found = try await find(kind, id)
+    return await found.adaptation.transportType(of: found.endpoint)
   }
 
   public func constraints(_ kind: NMOSResourceKind, id: NMOSID) async throws -> [[String: NMOSConstraint]] {
-    let (endpoint, adaptation) = try await find(kind, id)
-    return try await adaptation.constraints(of: endpoint)
+    let found = try await find(kind, id)
+    return try await found.adaptation.constraints(of: found.endpoint)
   }
 
   public func active(_ kind: NMOSResourceKind, id: NMOSID) async throws -> NMOSConnectionState {
-    let (endpoint, adaptation) = try await find(kind, id)
-    return try await adaptation.active(of: endpoint)
+    let found = try await find(kind, id)
+    return try await found.adaptation.active(of: found.endpoint)
   }
 
   public func transportFile(sender id: NMOSID) async throws -> NMOSTransportFile? {
-    let (endpoint, adaptation) = try await find(.sender, id)
-    return try await adaptation.transportFile(of: endpoint)
+    let found = try await find(.sender, id)
+    return try await found.adaptation.transportFile(of: found.endpoint)
   }
 
   public func transportParameters(
     from file: NMOSTransportFile,
     receiver id: NMOSID
   ) async throws -> [NMOSTransportParameters]? {
-    let (endpoint, adaptation) = try await find(.receiver, id)
-    return try await adaptation.transportParameters(from: file, for: endpoint)
+    let found = try await find(.receiver, id)
+    return try await found.adaptation.transportParameters(from: file, for: found.endpoint)
   }
 
   public func activate(
@@ -169,49 +81,19 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
     id: NMOSID,
     staged: NMOSConnectionState
   ) async throws -> NMOSConnectionState {
-    let (endpoint, adaptation) = try await find(kind, id)
+    let found = try await find(kind, id)
     do {
-      try await adaptation.activate(endpoint, staged: staged)
+      try await found.adaptation.activate(found.endpoint, staged: staged)
     } catch {
       logger.info("activation of \(kind.rawValue) \(id) failed: \(error)")
       throw NMOSConnectionError(error)
     }
     // the endpoint that was found is a copy from before the change
-    return try await adaptation.active(of: endpoint.refreshed)
+    return try await found.adaptation.active(of: found.endpoint.refreshed)
   }
 
-  // MARK: - Changes
-
+  /// The connections are read from the description, so they change when it does.
   public nonisolated func connectionChanges() -> AsyncStream<Void> {
-    let (stream, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
-    let changes = changes()
-    let task = Task { @OcaDevice [weak self] in
-      for await _ in changes {
-        // the claims were decided from what has just changed
-        self?.invalidate()
-        continuation.yield()
-      }
-      continuation.finish()
-    }
-    continuation.onTermination = { _ in task.cancel() }
-    return stream
-  }
-
-  /// The objects connections are read from that the walker does not observe: the device
-  /// manager, whose name an adaptation may give its senders, and the session agents.
-  private var connectionObjects: [SwiftOCADevice.OcaRoot] {
-    get async {
-      var objects: [SwiftOCADevice.OcaRoot] = await device.deviceManager.map { [$0] } ?? []
-      for application in await walker.applications {
-        for oNo in application.transportSessionControlAgentONos {
-          if let agent: SwiftOCADevice.OcaRoot = await device.resolve(objectNumber: oNo) { objects.append(agent) }
-        }
-      }
-      return objects
-    }
-  }
-
-  private nonisolated func changes() -> AsyncStream<Void> {
-    walker.changes { await self.connectionObjects }
+    bridge.descriptions()
   }
 }
