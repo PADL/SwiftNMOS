@@ -56,8 +56,6 @@ public final class NMOSOcaBridge: Sendable {
   let adaptations: NMOSOcaAdaptations
   let controls: [NMOSControl]
   private let host: HostProvider
-  /// Where `hostChanged()` asks the running `run()` to describe the device again.
-  private var requests: AsyncStream<Void>.Continuation?
   /// The describe in progress, which the next waits for.
   private var describing: Task<Void, Never>?
 
@@ -84,31 +82,18 @@ public final class NMOSOcaBridge: Sendable {
     walker = NMOSOcaEndpointWalker(device: device, adaptations: adaptations)
   }
 
-  /// Describes the device, then again whenever what it was described from changes or
-  /// `hostChanged()` is called, until the task is cancelled.
+  /// Describes the device, then again whenever what it was described from changes, until
+  /// the task is cancelled. A host whose own part of the description changes, which
+  /// nothing the bridge observes announces, calls `describe()` itself.
   public func run() async throws {
     guard await device.deviceManager != nil else {
       logger.error("not describing the OCA device to NMOS: no device manager")
       return
     }
-    let (requests, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
-    self.requests = continuation
-    defer { self.requests = nil }
-    await describe()
-    // one describer, for changes to the objects and to the host alike
-    await withTaskGroup(of: Void.self) { group in
-      group.addTask { for await _ in self.changes() { continuation.yield() } }
-      group.addTask { for await _ in requests { await self.describe() } }
-      await group.next()
-      group.cancelAll()
+    for await _ in changes() {
+      await describe()
     }
     try Task.checkCancellation()
-  }
-
-  /// Has the running bridge describe the device again, for a change to what the host
-  /// provider gives that nothing the bridge observes announces.
-  public func hostChanged() {
-    requests?.yield()
   }
 
   /// Writes the device's current description to the resource store. The store ignores

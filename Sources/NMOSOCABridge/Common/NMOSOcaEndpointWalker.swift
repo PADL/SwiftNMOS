@@ -36,6 +36,19 @@ public struct NMOSOcaEndpoint: Sendable {
     self.status = status
   }
 
+  /// The endpoint with the ID as the application has it now; nil once it has gone.
+  @OcaDevice
+  public init?(application: SwiftOCADevice.OcaMediaTransportApplication, id: OcaMediaStreamEndpointID) {
+    guard let endpoint = try? application.endpoint(id) else { return nil }
+    self.init(application: application, endpoint: endpoint, status: application.endpointStatuses[id])
+  }
+
+  /// The endpoint as the application has it now, for reading back after a change.
+  @OcaDevice
+  public var refreshed: NMOSOcaEndpoint {
+    NMOSOcaEndpoint(application: application, id: endpoint.idInternal) ?? self
+  }
+
   /// An output endpoint sends to the network, so it is an NMOS sender.
   public var isSender: Bool { endpoint.direction == .output }
 
@@ -80,11 +93,7 @@ public final class NMOSOcaEndpointWalker: Sendable {
     get async {
       await applications.flatMap { application in
         application.endpoints.map {
-          NMOSOcaEndpoint(
-            application: application,
-            endpoint: $0,
-            status: application.endpointStatuses[$0.idInternal]
-          )
+          NMOSOcaEndpoint(application: application, endpoint: $0, status: application.endpointStatuses[$0.idInternal])
         }
       }
     }

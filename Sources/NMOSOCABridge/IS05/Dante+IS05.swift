@@ -120,10 +120,10 @@ extension NMOSOcaDanteAdaptation: NMOSOcaConnecting {
         var subscription = channel
         subscription.adaptationData = try data.blob
         try await application.setChannelEndpoint(
-          id: id, channelEndpoint: subscription, from: NMOSConnectionController.shared
+          id: id, channelEndpoint: subscription, from: NMOSOcaControlController.connection
         )
       } else {
-        try await application.clearChannelEndpoint(id: id, from: NMOSConnectionController.shared)
+        try await application.clearChannelEndpoint(id: id, from: NMOSOcaControlController.connection)
       }
     } catch {
       throw NMOSConnectionError(error)

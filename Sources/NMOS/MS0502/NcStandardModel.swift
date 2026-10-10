@@ -44,19 +44,19 @@ public enum NcStandardModel {
     classes.first { $0.classID == classID }
   }
 
+  /// The standard classes in a class's lineage, the root first; a non-standard class
+  /// contributes nothing.
+  public static func lineage(of classID: NcClassID) -> [NcClassDescriptor] {
+    classID.ncLineage.compactMap(classDescriptor)
+  }
+
   /// MS-05-02's own methods of a standard class and of the standard classes above it.
   public static func methodIDs(of classID: NcClassID) -> Set<NcElementID> {
-    let lineage = classID.indices.compactMap { classDescriptor(Array(classID[...$0])) }
-    return Set(lineage.flatMap(\.methods).map(\.id))
+    Set(lineage(of: classID).flatMap(\.methods).map(\.id))
   }
 
   /// The fixed role of a standard manager class, which a class derived from it keeps.
   public static func fixedRole(of classID: NcClassID) -> String? {
-    var current: NcClassID? = classID
-    while let id = current {
-      if let role = classDescriptor(id)?.fixedRole { return role }
-      current = id.ncParent
-    }
-    return nil
+    lineage(of: classID).last { $0.fixedRole != nil }?.fixedRole
   }
 }

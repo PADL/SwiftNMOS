@@ -42,15 +42,10 @@ extension NMOSConnectionError {
   }
 }
 
-/// The controller IS-05 activations are made as: the bridge itself, which calls the
-/// device's methods directly and takes no notifications.
-actor NMOSConnectionController: OcaController, CustomStringConvertible {
-  static let shared = NMOSConnectionController()
-
-  nonisolated var flags: OcaControllerFlags { [] }
-  nonisolated var description: String { "nmos/is05" }
-
-  func sendMessages(_ messages: [any Ocp1Message], type messageType: OcaMessageType) async throws {}
+extension NMOSOcaControlController {
+  /// The controller IS-05 activations are made as: the bridge itself, which calls the
+  /// device's methods directly and takes no notifications.
+  static let connection = NMOSOcaControlController(description: "nmos/is05", flags: []) { _, _ in }
 }
 
 extension NMOSConnectionError {
@@ -83,17 +78,6 @@ extension NMOSOcaEndpoint {
       // an application bound to no interface of its own sends and receives on the host's
       return addresses.isEmpty ? localIPv4Addresses() : addresses
     }
-  }
-
-  /// The endpoint as the application has it now, for reading back after a change.
-  @OcaDevice
-  var refreshed: NMOSOcaEndpoint {
-    guard let current = try? application.endpoint(endpoint.idInternal) else { return self }
-    return NMOSOcaEndpoint(
-      application: application,
-      endpoint: current,
-      status: application.endpointStatuses[current.idInternal]
-    )
   }
 }
 

@@ -65,6 +65,13 @@ public extension [Int32] {
     return parent.isEmpty ? nil : parent
   }
 
+  /// The class and those it derives from, the root first.
+  var ncLineage: [NcClassID] {
+    var lineage = [self]
+    while let parent = lineage.last?.ncParent { lineage.append(parent) }
+    return lineage.reversed()
+  }
+
   /// Whether the class contains an authority key, as every non-standard class must.
   var isNonStandard: Bool { contains { $0 <= 0 } }
 

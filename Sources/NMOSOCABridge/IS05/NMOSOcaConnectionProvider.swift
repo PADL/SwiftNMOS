@@ -113,12 +113,7 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
 
   /// The endpoint a claim is on, as its application has it now.
   private func endpoint(of claim: Claim) -> NMOSOcaEndpoint? {
-    guard let endpoint = try? claim.application.endpoint(claim.endpointID) else { return nil }
-    return NMOSOcaEndpoint(
-      application: claim.application,
-      endpoint: endpoint,
-      status: claim.application.endpointStatuses[claim.endpointID]
-    )
+    NMOSOcaEndpoint(application: claim.application, id: claim.endpointID)
   }
 
   private func find(

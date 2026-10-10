@@ -97,16 +97,16 @@ extension NMOSOcaMilanAdaptation: NMOSOcaConnecting {
     let id = endpoint.endpoint.idInternal
     do {
       guard staged.masterEnable else {
-        return try await agent.resetSession(id: id, from: NMOSConnectionController.shared)
+        return try await agent.resetSession(id: id, from: NMOSOcaControlController.connection)
       }
       let talker = try Self.stream(staged.transportParameters.first ?? [:])
       let connection = try agent.session(id).connections.first?.id ?? 1
       try await agent.configureConnection(
         sessionID: id, connectionID: connection, localEndpointID: id, remoteEndpointID: talker.blob,
-        from: NMOSConnectionController.shared
+        from: NMOSOcaControlController.connection
       )
       // binding leaves the stream waiting; an enabled receiver is one that is streaming
-      try await agent.setStreamingEnabled(id: id, active: true, from: NMOSConnectionController.shared)
+      try await agent.setStreamingEnabled(id: id, active: true, from: NMOSOcaControlController.connection)
     } catch {
       throw NMOSConnectionError(error)
     }

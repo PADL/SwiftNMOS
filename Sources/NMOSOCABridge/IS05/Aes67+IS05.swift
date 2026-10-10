@@ -221,11 +221,11 @@ extension NMOSOcaRTPAdaptation: NMOSOcaConnecting {
       switch endpoint.application {
       case let application as any MediaStreamEndpointSDPRepresentable:
         try await application.configureEndpointFromSDP(
-          endpointID: id, sdpString: sdpString, streamID: streamID, from: NMOSConnectionController.shared
+          endpointID: id, sdpString: sdpString, streamID: streamID, from: NMOSOcaControlController.connection
         )
       case let application as SwiftOCADevice.Aes67OcaMediaTransportApplication:
         try await application.configureEndpointFromSDP(
-          endpointID: id, sdpString: sdpString, streamID: streamID, from: NMOSConnectionController.shared
+          endpointID: id, sdpString: sdpString, streamID: streamID, from: NMOSOcaControlController.connection
         )
       default:
         throw NMOSConnectionError.failed("The endpoint's application takes no session description")

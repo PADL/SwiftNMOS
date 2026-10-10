@@ -74,6 +74,11 @@ struct NMOSOcaControlClass: Sendable {
   let descriptors: [NcClassDescriptor]
 }
 
+extension SwiftOCADevice.OcaRoot {
+  /// The object's OCA role as MS-05-02 allows one: without dots, as they separate role paths.
+  var ncRole: String { role.replacingOccurrences(of: ".", with: "_") }
+}
+
 /// Works out, once per OCA class, how it is presented. The classes and datatypes a
 /// class manager publishes are those of the classes met so far.
 @OcaDevice
@@ -123,43 +128,34 @@ final class NMOSOcaControlClasses {
     return datatypes.descriptors.filter { referred.contains($0.name) }
   }
 
-  func controlClass(
-    of object: SwiftOCADevice.OcaRoot,
-    role: String
-  ) -> NMOSOcaControlClass {
+  func controlClass(of object: SwiftOCADevice.OcaRoot) -> NMOSOcaControlClass {
     let type = ObjectIdentifier(type(of: object))
     if let known = classes[type] { return known }
-    let controlClass = describe(object, role: role)
+    let controlClass = describe(object)
     classes[type] = controlClass
     descriptors = listDescriptors()
     datatypeDescriptors = listDatatypes()
     return controlClass
   }
 
-  /// How the elements of an object's class are served, gathered over its lineage.
+  /// How the elements of a class are served: of one OCA class, or gathered over a lineage.
   private struct Bindings {
     var properties = [NcElementID: NMOSOcaPropertyBinding]()
     var methods = [NcElementID: NMOSOcaMethodBinding]()
     var standardIDs = [OcaPropertyID: NcElementID]()
     /// The OCA properties already served as standard ones, or by where an object is found.
     var consumed = Set<OcaPropertyID>()
-  }
 
-  /// One OCA class of a lineage as a non-standard class: its descriptor, and how the
-  /// elements it presents are served.
-  private struct ClassBindings {
-    var descriptor: NcClassDescriptor
-    var properties = [NcElementID: NMOSOcaPropertyBinding]()
-    var methods = [NcElementID: NMOSOcaMethodBinding]()
-    var standardIDs = [OcaPropertyID: NcElementID]()
+    mutating func merge(_ other: Bindings) {
+      properties.merge(other.properties) { _, new in new }
+      methods.merge(other.methods) { _, new in new }
+      standardIDs.merge(other.standardIDs) { _, new in new }
+    }
   }
 
   private typealias Anchored = (depth: Int, anchor: NMOSOcaControlMapping.Anchor)
 
-  private func describe(
-    _ object: SwiftOCADevice.OcaRoot,
-    role: String
-  ) -> NMOSOcaControlClass {
+  private func describe(_ object: SwiftOCADevice.OcaRoot) -> NMOSOcaControlClass {
     let lineage = object.deviceClassDescriptors
     let anchored = anchors(in: lineage)
     guard let (anchorDepth, anchor) = anchored.max(by: { $0.depth < $1.depth }) else {
@@ -192,15 +188,13 @@ final class NMOSOcaControlClasses {
       }
       // a class's level is its depth by its ID, as OCA has it too
       let level = ocaClass.classID.ncLevel(under: anchor.nc)
-      let described = describe(
+      let (descriptor, described) = describe(
         ocaClass: ocaClass, at: level, under: anchor, consumed: bindings.consumed
       )
-      bindings.properties.merge(described.properties) { _, new in new }
-      bindings.methods.merge(described.methods) { _, new in new }
-      bindings.standardIDs.merge(described.standardIDs) { _, new in new }
-      descriptors.append(described.descriptor)
+      bindings.merge(described)
+      descriptors.append(descriptor)
     }
-    return controlClass(anchor, descriptors, bindings, label: label, role: role)
+    return controlClass(anchor, descriptors, bindings, label: label, role: object.ncRole)
   }
 
   /// The classes of the lineage that have a standard counterpart, with their depth.
@@ -247,32 +241,35 @@ final class NMOSOcaControlClasses {
     declared.values.first { $0.flags.contains(.label) && $0.getMethodID != nil && $0.isSettable }
   }
 
-  /// One OCA class's own elements, at `level`, as a non-standard class.
+  /// One OCA class's own elements, at `level`, as a non-standard class: its descriptor,
+  /// and how the elements it presents are served.
   private func describe(
     ocaClass: OcaDeviceClassDescriptor,
     at level: UInt16,
     under anchor: NMOSOcaControlMapping.Anchor,
     consumed: Set<OcaPropertyID>
-  ) -> ClassBindings {
-    var described = ClassBindings(descriptor: NcClassDescriptor(
+  ) -> (NcClassDescriptor, Bindings) {
+    var descriptor = NcClassDescriptor(
       classID: anchor.nc + [NMOSOcaControlMapping.authorityKey] + ocaClass.classID.ncIndices,
       name: ocaClass.type.className
-    ))
+    )
+    var described = Bindings()
     // (a vector is listed once, under the ID of its x component)
     for property in ocaClass.properties where !consumed.contains(property.propertyID) {
-      present(property, at: level, into: &described)
+      present(property, at: level, in: &descriptor, into: &described)
     }
-    presentMethods(of: ocaClass, at: level, under: anchor, into: &described)
-    return described
+    presentMethods(of: ocaClass, at: level, under: anchor, in: &descriptor, into: &described)
+    return (descriptor, described)
   }
 
   /// A property as one or, for a vector, two property descriptors and their bindings.
   private func present(
     _ property: OcaDevicePropertyDescriptor,
     at level: UInt16,
-    into described: inout ClassBindings
+    in descriptor: inout NcClassDescriptor,
+    into described: inout Bindings
   ) {
-    let className = described.descriptor.name
+    let className = descriptor.name
     guard property.getMethodID != nil else {
       logger.trace("not presenting \(className).\(property.name): no getter")
       return
@@ -301,7 +298,7 @@ final class NMOSOcaControlClasses {
         let id = NcElementID(level: level, index: component.id.propertyIndex)
         described.properties[id] = NMOSOcaPropertyBinding(value: component.binding, isReadOnly: isReadOnly)
         guard let reference else { continue }
-        described.descriptor.properties.append(NcPropertyDescriptor(
+        descriptor.properties.append(NcPropertyDescriptor(
           id: id, name: component.name, typeName: reference.typeName,
           isReadOnly: isReadOnly, isNullable: reference.isNullable,
           isSequence: reference.isSequence
@@ -320,9 +317,10 @@ final class NMOSOcaControlClasses {
     of ocaClass: OcaDeviceClassDescriptor,
     at level: UInt16,
     under anchor: NMOSOcaControlMapping.Anchor,
-    into described: inout ClassBindings
+    in descriptor: inout NcClassDescriptor,
+    into described: inout Bindings
   ) {
-    let className = described.descriptor.name
+    let className = descriptor.name
     for method in candidates(in: ocaClass) {
       let id = NcElementID(level: level, index: method.methodID.methodIndex)
       assert(
@@ -351,7 +349,7 @@ final class NMOSOcaControlClasses {
         }
         described.methods[id] = binding
         let resultDatatype = try datatypes.methodResult(named: className + method.name + "Result", fields: fields)
-        described.descriptor.methods.append(NcMethodDescriptor(
+        descriptor.methods.append(NcMethodDescriptor(
           id: id, name: method.name, resultDatatype: resultDatatype, parameters: descriptors, isDeprecated: false
         ))
       } catch {

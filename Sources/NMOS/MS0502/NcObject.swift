@@ -72,8 +72,7 @@ class NcObject<Source: NcObjectSource> {
 
   /// The descriptor of a property a standard class in the lineage declares.
   private static func standardProperty(_ property: NcElementID, of classID: NcClassID) -> NcPropertyDescriptor? {
-    classID.indices.lazy.compactMap { NcStandardModel.classDescriptor(Array(classID[...$0])) }
-      .compactMap { $0.properties.first { $0.id == property } }.first
+    NcStandardModel.lineage(of: classID).lazy.compactMap { $0.properties.first { $0.id == property } }.first
   }
 
   /// The sequence methods, 1m3 to 1m7, in terms of reading and writing the whole value.
@@ -145,14 +144,8 @@ class NcObject<Source: NcObjectSource> {
   /// Whether a class in the object's lineage declares the property a sequence.
   private func isSequence(_ property: NcElementID) async -> Bool {
     let classes = await NcStandardModel.classes + source.descriptors().classes
-    var classID: NcClassID? = identity.classID
-    while let id = classID {
-      if let declared = classes.first(where: { $0.classID == id })?.properties.first(where: { $0.id == property }) {
-        return declared.isSequence
-      }
-      classID = id.ncParent
-    }
-    return false
+    let lineage = identity.classID.ncLineage.compactMap { id in classes.first { $0.classID == id } }
+    return lineage.lazy.compactMap { $0.properties.first { $0.id == property } }.first?.isSequence ?? false
   }
 
   private static func notASequence(_ property: NcElementID) -> NcMethodResult {
@@ -300,15 +293,12 @@ final class NcClassManager<Source: NcObjectSource>: NcObject<Source> {
 
     let classes = NcStandardModel.classes + lists.sourceClasses
     guard var descriptor = classes.first(where: { $0.classID == classID }) else { return nil }
-    var ancestor = classID.ncParent
-    while inherited, let id = ancestor {
+    if inherited {
       // what each class it derives from defines, the root's first
-      if let parent = classes.first(where: { $0.classID == id }) {
-        descriptor.properties.insert(contentsOf: parent.properties, at: 0)
-        descriptor.methods.insert(contentsOf: parent.methods, at: 0)
-        descriptor.events.insert(contentsOf: parent.events, at: 0)
-      }
-      ancestor = id.ncParent
+      let ancestors = classID.ncLineage.dropLast().compactMap { id in classes.first { $0.classID == id } }
+      descriptor.properties = ancestors.flatMap(\.properties) + descriptor.properties
+      descriptor.methods = ancestors.flatMap(\.methods) + descriptor.methods
+      descriptor.events = ancestors.flatMap(\.events) + descriptor.events
     }
     return model.descriptors.keep(.init(json: descriptor.json), for: key, in: lists).json
   }

@@ -144,7 +144,7 @@ final class NMOSOcaNodeDescriptionTests: XCTestCase {
   }
 
   @OcaDevice
-  func testARunningBridgeIsToldOfAHostChange() async throws {
+  func testARunningBridgeDescribesAHostChangeItIsToldOf() async throws {
     _ = try await TestDevice.networkManager()
     let address = Seed()
     address.value.withLock { $0 = "10.0.0.5" }
@@ -157,7 +157,7 @@ final class NMOSOcaNodeDescriptionTests: XCTestCase {
     try await waitFor { await store.node?.api.endpoints.map(\.host) == ["10.0.0.5"] }
 
     address.value.withLock { $0 = "10.0.0.6" }
-    bridge.hostChanged()
+    await bridge.describe()
     try await waitFor { await store.node?.api.endpoints.map(\.host) == ["10.0.0.6"] }
   }
 }

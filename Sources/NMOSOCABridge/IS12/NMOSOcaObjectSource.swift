@@ -61,25 +61,6 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   public typealias Object = SwiftOCADevice.OcaRoot
   public typealias ResourceIDs = @Sendable () async -> NMOSOcaResourceIDs?
 
-  /// An object of the tree, which is the root block, a manager, or an object owned by a
-  /// block of the tree. Its role is its OCA role as MS-05-02 allows one, before it is
-  /// told apart from a sibling's.
-  private struct Entry {
-    let object: SwiftOCADevice.OcaRoot
-    let owner: NcOid?
-    let role: String
-
-    init(object: SwiftOCADevice.OcaRoot, owner: NcOid?, role: String) {
-      self.object = object
-      self.owner = owner
-      self.role = role
-    }
-
-    init(_ identity: Identity) {
-      self.init(object: identity.object, owner: identity.owner, role: identity.role)
-    }
-  }
-
   /// A control session as the device sees it, and what it has been told so far.
   private struct Session {
     let controller: NMOSOcaControlController
@@ -141,17 +122,21 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   // MARK: - The tree
 
   /// The object an oid stands for, looked up in the device as it is now: the tree is
-  /// OCA's, and nothing of it is kept here.
-  private func entry(_ oid: NcOid) async -> Entry? {
+  /// OCA's, and nothing of it is kept here. An object is in the tree if it is the root
+  /// block, or its owner is.
+  public func identity(of oid: NcOid) async -> Identity? {
     guard let root = await device.rootBlock,
           let object = await device.objects[NMOSOcaControlMapping.objectNumber(of: oid)]
     else { return nil }
-    if object === root { return Entry(object: root, owner: nil, role: NMOSOcaControlMapping.rootRole) }
-    // an object is in the tree if its owner is, up to the root block
-    guard let owner = await owner(of: object, root: root), await entry(NMOSOcaControlMapping.oid(of: owner)) != nil else {
-      return nil
+    let classID = classes.controlClass(of: object).classID
+    if object === root {
+      return Identity(classID: classID, oid: oid, owner: nil, role: NMOSOcaControlMapping.rootRole, object: root)
     }
-    return Entry(object: object, owner: NMOSOcaControlMapping.oid(of: owner), role: role(of: object))
+    guard let owner = await owner(of: object, root: root),
+          let block = await identity(of: NMOSOcaControlMapping.oid(of: owner))
+    else { return nil }
+    let role = await roles(in: block.object)[object.objectNumber] ?? role(of: object)
+    return Identity(classID: classID, oid: oid, owner: block.oid, role: role, object: object)
   }
 
   /// The block an object is in: the root block for a manager, as MS-05-02 has it.
@@ -161,22 +146,17 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     managers: [SwiftOCADevice.OcaRoot]? = nil
   ) async -> OcaONo? {
     if object is SwiftOCADevice.OcaManager {
-      let managers = if let managers { managers } else { await self.managers() }
+      let managers = if let managers { managers } else { await device.managers }
       return managers.contains { $0 === object } ? root.objectNumber : nil
     }
     guard let owner = (object as? any SwiftOCADevice.OcaOwnable)?.owner, owner != OcaInvalidONo else { return nil }
     return owner
   }
 
-  /// The managers, device manager first, which the root block contains.
-  private func managers() async -> [SwiftOCADevice.OcaRoot] {
-    await device.managers
-  }
-
   /// A block's members, in order: the objects it owns and, for the root block, the managers.
   private func members(of block: SwiftOCADevice.OcaRoot) async -> [SwiftOCADevice.OcaRoot] {
     guard let container = block as? any OcaBlockContainer, let root = await device.rootBlock else { return [] }
-    let managers = await managers()
+    let managers = await device.managers
     let candidates = (block === root ? managers : []) + container.actionObjects
     // a manager the root block also lists is a member once
     var members = [SwiftOCADevice.OcaRoot]()
@@ -189,25 +169,16 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     return members
   }
 
-  /// An object's OCA role as MS-05-02 allows one: without dots, as they separate role paths,
-  /// and a standard class's fixed role where it has one.
+  /// An object's OCA role as MS-05-02 allows one, or a standard class's fixed role where
+  /// it has one.
   private func role(of object: SwiftOCADevice.OcaRoot) -> String {
-    let role = object.role.replacingOccurrences(of: ".", with: "_")
-    let classID = classes.controlClass(of: object, role: role).classID
-    return NcStandardModel.fixedRole(of: classID) ?? role
+    NcStandardModel.fixedRole(of: classes.controlClass(of: object).classID) ?? object.ncRole
   }
 
-  /// The role an object is presented under in its block: its oid is appended where a
-  /// sibling before it has the same role, as roles are unique within a block.
-  private func nmosRole(of entry: Entry) async -> String {
-    guard let owner = entry.owner, let block = await device.objects[NMOSOcaControlMapping.objectNumber(of: owner)] else {
-      return entry.role
-    }
-    return await roles(in: block)[entry.object.objectNumber] ?? entry.role
-  }
-
-  /// The roles of a block's members, worked out together and kept for as long as the
-  /// block has the same members, so that listing a block is not quadratic in its size.
+  /// The role each of a block's members is presented under: its oid is appended where a
+  /// sibling before it has the same role, as roles are unique within a block. Worked out
+  /// together and kept for as long as the block has the same members, so that listing
+  /// a block is not quadratic in its size.
   private func roles(in block: SwiftOCADevice.OcaRoot) async -> [OcaONo: String] {
     // what the block lists, which is cheap to read, says whether what is kept still stands
     let listed = await listedMembers(of: block)
@@ -243,26 +214,14 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     await registration.value
   }
 
-  public func identity(of oid: NcOid) async -> Identity? {
-    guard let entry = await entry(oid) else { return nil }
-    return await Identity(
-      classID: classes.controlClass(of: entry.object, role: entry.role).classID,
-      oid: oid,
-      owner: entry.owner,
-      role: nmosRole(of: entry),
-      object: entry.object
-    )
-  }
-
   public func members(of block: Identity) async -> [Identity] {
     let roles = await roles(in: block.object)
     return await members(of: block.object).map { member in
-      let role = roles[member.objectNumber] ?? role(of: member)
-      return Identity(
-        classID: classes.controlClass(of: member, role: role).classID,
+      Identity(
+        classID: classes.controlClass(of: member).classID,
         oid: NMOSOcaControlMapping.oid(of: member.objectNumber),
         owner: block.oid,
-        role: role,
+        role: roles[member.objectNumber] ?? role(of: member),
         object: member
       )
     }
@@ -295,37 +254,38 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   // MARK: - Properties
 
   public func get(_ property: NcElementID, of identity: Identity, session: NcSession) async -> NcMethodResult {
-    await get(property, of: Entry(identity), as: controller(for: session))
+    await get(property, of: identity, as: controller(for: session))
   }
 
   private func get(
     _ property: NcElementID,
-    of entry: Entry,
+    of identity: Identity,
     as controller: NMOSOcaControlController
   ) async -> NcMethodResult {
-    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
+    let object = identity.object
+    let controlClass = classes.controlClass(of: object)
     if property == .userLabel {
       guard let label = controlClass.label else {
         // no label is an empty one, as an OCA object's is
-        return NcMethodResult(value: .string(await labels.label(of: entry.object.objectNumber) ?? ""))
+        return NcMethodResult(value: .string(await labels.label(of: object.objectNumber) ?? ""))
       }
       let binding = NMOSOcaPropertyBinding(value: .property(label, .string), isReadOnly: false)
-      return await read(binding, of: entry.object, as: controller)
+      return await read(binding, of: object, as: controller)
     }
     guard let binding = controlClass.properties[property] else {
       return .error(.propertyNotImplemented, "No property \(property.level)p\(property.index)")
     }
-    return await read(binding, of: entry.object, as: controller)
+    return await read(binding, of: object, as: controller)
   }
 
   /// The range of each bounded OCA property of the object. OCA keeps a range with the
   /// value, for the object and not its class, and its getter answers with both.
   public func runtimeConstraints(of identity: Identity, session: NcSession) async -> [NMOSJSONValue] {
-    await constraints(of: Entry(identity), as: controller(for: session))
+    await constraints(of: identity, as: controller(for: session))
   }
 
-  private func constraints(of entry: Entry, as controller: NMOSOcaControlController) async -> [NMOSJSONValue] {
-    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
+  private func constraints(of identity: Identity, as controller: NMOSOcaControlController) async -> [NMOSJSONValue] {
+    let controlClass = classes.controlClass(of: identity.object)
     var constraints = [NMOSJSONValue]()
     let properties = controlClass.properties.sorted { ($0.key.level, $0.key.index) < ($1.key.level, $1.key.index) }
     for (id, binding) in properties where !binding.isHidden {
@@ -333,7 +293,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       guard case let .property(description, schema?, .none) = binding.value,
             description.flags.contains(.bounded), schema.isNumber, let getter = description.getMethodID
       else { continue }
-      let (status, answer) = await send(getter, to: entry.object, as: controller)
+      let (status, answer) = await send(getter, to: identity.object, as: controller)
       guard status == .ok, let answer else { continue }
       // a bound OCP.2 has to write as text is infinite, which is no bound
       func bound(_ name: String) -> NMOSJSONValue? {
@@ -357,8 +317,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     session: NcSession
   ) async -> NcMethodResult {
     let controller = await controller(for: session)
-    let entry = Entry(identity), oid = identity.oid
-    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
+    let object = identity.object, oid = identity.oid
+    let controlClass = classes.controlClass(of: object)
     let result: NcMethodResult
     if property == .userLabel {
       guard value.isNull || value.stringValue != nil else {
@@ -369,13 +329,13 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       // device says to writing it, a refusal included, is the session's answer.
       if let label = controlClass.label {
         let binding = NMOSOcaPropertyBinding(value: .property(label, .string), isReadOnly: false)
-        result = await write(binding, of: entry.object, value, as: controller)
+        result = await write(binding, of: object, value, as: controller)
       } else {
-        await labels.setLabel(value.stringValue.flatMap { $0.isEmpty ? nil : $0 }, of: entry.object.objectNumber)
+        await labels.setLabel(value.stringValue.flatMap { $0.isEmpty ? nil : $0 }, of: object.objectNumber)
         result = NcMethodResult()
       }
     } else if let binding = controlClass.properties[property] {
-      result = await write(binding, of: entry.object, value, as: controller)
+      result = await write(binding, of: object, value, as: controller)
       // nothing is notified of a hidden property
       if binding.isHidden { return result }
     } else {
@@ -384,7 +344,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     if !result.status.isError {
       // the object's own notification may come later or, for a label kept here, never
       for subscriber in sessions.filter({ $0.value.subscribed.contains(oid) }).keys {
-        await changed(property, of: entry, oid: oid, session: subscriber)
+        await changed(property, of: identity, session: subscriber)
       }
     }
     return result
@@ -479,12 +439,10 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// A method of one of the object's non-standard classes: the object model has already
   /// answered the standard ones, so what is not in the class is not a method.
   public func handleCommand(_ command: NcCommand, on identity: Identity, session: NcSession) async -> NcMethodResult {
-    let entry = Entry(identity)
-    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
-    guard let method = controlClass.methods[command.methodID] else {
+    guard let method = classes.controlClass(of: identity.object).methods[command.methodID] else {
       return .error(.methodNotImplemented, "No method \(command.methodID.level)m\(command.methodID.index)")
     }
-    return await send(method, to: entry.object, command.arguments, as: controller(for: session))
+    return await send(method, to: identity.object, command.arguments, as: controller(for: session))
   }
 
   /// The arguments go to the OCA method by their OCP.2 names, so the device decodes and
@@ -544,7 +502,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// to have been looked at before they are listed; a class is described only once.
   public func descriptors() async -> (classes: [NcClassDescriptor], datatypes: [NcDatatypeDescriptor]) {
     for object in await device.objects.values {
-      _ = classes.controlClass(of: object, role: role(of: object))
+      _ = classes.controlClass(of: object)
     }
     return (classes.descriptors, classes.datatypeDescriptors)
   }
@@ -606,8 +564,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     var constraints = [NcOid: NMOSJSONValue]()
     for oid in oids.subtracting(sessions[session]?.subscribed ?? []) {
       added[oid] = await subscriptions(to: oid)
-      if let entry = await entry(oid) {
-        let current = await self.constraints(of: entry, as: controller)
+      if let identity = await identity(of: oid) {
+        let current = await self.constraints(of: identity, as: controller)
         constraints[oid] = current.isEmpty ? .null : .array(current)
       }
     }
@@ -632,11 +590,10 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// One subscription for each property the object presents, so the device neither encodes
   /// nor sends the session's controller anything else, such as OcaLevelSensor's own 4.1.
   private func subscriptions(to oid: NcOid) async -> [OcaSubscriptionManagerSubscription] {
-    guard let entry = await entry(oid) else { return [] }
-    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
-    return controlClass.standardIDs.keys.map { property in
+    guard let identity = await identity(of: oid) else { return [] }
+    return classes.controlClass(of: identity.object).standardIDs.keys.map { property in
       .propertyChangeSubscription2(OcaPropertyChangeSubscription2(
-        emitter: entry.object.objectNumber, property: property,
+        emitter: identity.object.objectNumber, property: property,
         notificationDeliveryMode: .normal, destinationInformation: OcaNetworkAddress()
       ))
     }
@@ -645,24 +602,25 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// An OCA object reported to a session's controller that one of its properties changed.
   private func changed(_ property: OcaPropertyID, of objectNumber: OcaONo, session: NcSession) async {
     let oid = NMOSOcaControlMapping.oid(of: objectNumber)
-    guard sessions[session]?.subscribed.contains(oid) == true, let entry = await entry(oid) else { return }
-    let controlClass = classes.controlClass(of: entry.object, role: entry.role)
+    guard sessions[session]?.subscribed.contains(oid) == true, let identity = await identity(of: oid) else { return }
+    let controlClass = classes.controlClass(of: identity.object)
     guard let id = controlClass.standardIDs[property] else { return }
     guard id != .members else {
       // the object model has the members' descriptors, and gives them to the notification
       notify(.members, of: oid, value: .null, session: session)
       return
     }
-    await changed(id, of: entry, oid: oid, session: session)
+    await changed(id, of: identity, session: session)
     // a bounded property's range is in the object's runtime constraints, which change with it
     if case let .property(description, _, _)? = controlClass.properties[id]?.value, description.flags.contains(.bounded) {
-      await changedConstraints(of: entry, oid: oid, session: session)
+      await changedConstraints(of: identity, session: session)
     }
   }
 
-  private func changedConstraints(of entry: Entry, oid: NcOid, session: NcSession) async {
+  private func changedConstraints(of identity: Identity, session: NcSession) async {
     guard let state = sessions[session] else { return }
-    let constraints = await constraints(of: entry, as: state.controller)
+    let oid = identity.oid
+    let constraints = await constraints(of: identity, as: state.controller)
     let value: NMOSJSONValue = constraints.isEmpty ? .null : .array(constraints)
     guard sessions[session]?.notified[oid]?[.runtimePropertyConstraints] != value else { return }
     sessions[session]?.notified[oid, default: [:]][.runtimePropertyConstraints] = value
@@ -676,9 +634,10 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   /// Notifies the session of the property's value as it now reads to it, unless that
   /// is what the session was notified of last.
-  private func changed(_ property: NcElementID, of entry: Entry, oid: NcOid, session: NcSession) async {
+  private func changed(_ property: NcElementID, of identity: Identity, session: NcSession) async {
+    let oid = identity.oid
     guard let state = sessions[session], state.subscribed.contains(oid) else { return }
-    let current = await get(property, of: entry, as: state.controller)
+    let current = await get(property, of: identity, as: state.controller)
     guard !current.status.isError, let value = current.value,
           sessions[session]?.notified[oid]?[property] != value
     else { return }
