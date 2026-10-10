@@ -116,7 +116,7 @@ private enum NMOSDeviceApp {
     let networkManager = try await SwiftOCADevice.OcaNetworkManager(deviceDelegate: device)
     let interface = try await SwiftOCADevice.OcaNetworkInterface(role: "Interface", deviceDelegate: device)
     interface.systemIOInterfaceName = host.name
-    interface.currentAdaptationData = try OcaIP4NetworkSettings(
+    interface.activeNetworkSettings = try OcaIP4NetworkSettings(
       addressAndPrefix: "\(host.address)/\(host.prefixLength)", autoconfigMode: .none, dhcpServerAddress: "",
       defaultGatewayAddress: "", additionalGateways: [], dnsServerAddresses: [], additionalParameters: ""
     ).blob

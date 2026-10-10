@@ -103,7 +103,7 @@ extension TestDevice {
     let interface = try await SwiftOCADevice.OcaNetworkInterface(
       role: role("Interface"), deviceDelegate: OcaDevice.shared
     )
-    interface.currentAdaptationData = try OcaIP4NetworkSettings(
+    interface.activeNetworkSettings = try OcaIP4NetworkSettings(
       addressAndPrefix: "\(address)/24", autoconfigMode: .none, dhcpServerAddress: "",
       defaultGatewayAddress: "", additionalGateways: [], dnsServerAddresses: [], additionalParameters: ""
     ).blob
