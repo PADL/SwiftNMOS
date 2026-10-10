@@ -129,7 +129,12 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     classes = NMOSOcaControlClasses(mapping: mapping, logger: logger)
     // MS-05-02 has a class manager, which IS-12 presents the device's as; a device that
     // has not made one gets one as the bridge starts
-    Task { @OcaDevice [self] in await self.makeClassManagerIfMissing() }
+    Task { @OcaDevice [device, logger] in
+      guard await device.classManager == nil else { return }
+      do { _ = try await SwiftOCADevice.OcaClassManager(deviceDelegate: device) } catch {
+        logger.error("not presenting a class manager: the device refused one: \(error)")
+      }
+    }
   }
 
   /// The device holds the endpoint, and through it every subscription of the sessions'
@@ -142,24 +147,9 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   // MARK: - The tree
 
-  /// Made as the bridge starts; looking at the tree first makes sure, should a request
-  /// come before that has run.
-  private var classManagerMade = false
-  private func makeClassManagerIfMissing() async {
-    guard !classManagerMade else { return }
-    classManagerMade = true
-    guard await device.classManager == nil else { return }
-    do {
-      _ = try await SwiftOCADevice.OcaClassManager(deviceDelegate: device)
-    } catch {
-      logger.error("not presenting a class manager: the device refused one: \(error)")
-    }
-  }
-
   /// The object an oid stands for, looked up in the device as it is now: the tree is
   /// OCA's, and nothing of it is kept here.
   private func entry(_ oid: NcOid) async -> Entry? {
-    await makeClassManagerIfMissing()
     guard let root = await device.rootBlock,
           let object = await device.objects[mapping.objectNumber(of: oid)]
     else { return nil }
