@@ -540,23 +540,13 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   // MARK: - Classes
 
-  public func classes() async -> [NcClassDescriptor] {
-    await describeEveryObject()
-    return classes.descriptors
-  }
-
-  /// The datatypes of the classes described so far, which `classes()`, asked first, has
-  /// described every object for.
-  public func datatypes() async -> [NcDatatypeDescriptor] {
-    classes.datatypeDescriptors
-  }
-
   /// A class manager publishes the classes of every object in the model, so each has
   /// to have been looked at before they are listed; a class is described only once.
-  private func describeEveryObject() async {
+  public func descriptors() async -> (classes: [NcClassDescriptor], datatypes: [NcDatatypeDescriptor]) {
     for object in await device.objects.values {
       _ = classes.controlClass(of: object, role: role(of: object))
     }
+    return (classes.descriptors, classes.datatypeDescriptors)
   }
 
   // MARK: - Sessions

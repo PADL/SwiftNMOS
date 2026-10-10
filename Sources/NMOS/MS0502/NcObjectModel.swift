@@ -86,11 +86,9 @@ public protocol NcObjectSource: Sendable {
   func handleCommand(_ command: NcCommand, on object: Identity, session: NcSession) async -> NcMethodResult
 
   /// The classes and datatypes of the objects that are not standard ones. The class
-  /// manager asks for them at every lookup, the classes first and then the datatypes, so
-  /// a source should keep the lists it returns until they change rather than make them
-  /// each time.
-  func classes() async -> [NcClassDescriptor]
-  func datatypes() async -> [NcDatatypeDescriptor]
+  /// manager asks for them at every lookup, so a source should keep the lists it returns
+  /// until they change rather than make them each time.
+  func descriptors() async -> (classes: [NcClassDescriptor], datatypes: [NcDatatypeDescriptor])
 
   /// The session's events, its subscriptions, and its end, as `NcDeviceModel` has them.
   func notifications(for session: NcSession) -> AsyncStream<NcNotification>
@@ -105,8 +103,7 @@ public extension NcObjectSource {
 
   func runtimeConstraints(of object: Identity, session: NcSession) async -> [NMOSJSONValue] { [] }
   func touchpoints(of object: Identity) async -> [NcTouchpoint]? { nil }
-  func classes() async -> [NcClassDescriptor] { [] }
-  func datatypes() async -> [NcDatatypeDescriptor] { [] }
+  func descriptors() async -> (classes: [NcClassDescriptor], datatypes: [NcDatatypeDescriptor]) { ([], []) }
   func subscriptionsChanged(to oids: Set<NcOid>, session: NcSession) async {}
   func sessionEnded(_ session: NcSession) async {}
 }

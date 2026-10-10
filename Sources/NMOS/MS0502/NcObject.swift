@@ -144,7 +144,7 @@ class NcObject<Source: NcObjectSource> {
 
   /// Whether a class in the object's lineage declares the property a sequence.
   private func isSequence(_ property: NcElementID) async -> Bool {
-    let classes = await NcStandardModel.classes + source.classes()
+    let classes = await NcStandardModel.classes + source.descriptors().classes
     var classID: NcClassID? = identity.classID
     while let id = classID {
       if let declared = classes.first(where: { $0.classID == id })?.properties.first(where: { $0.id == property }) {
@@ -344,7 +344,7 @@ final class NcClassManager<Source: NcObjectSource>: NcObject<Source> {
   /// depends on which classes the source has objects of and is made again only when
   /// the source's own lists change.
   private func descriptorLists() async -> NcDescriptorCache.Lists {
-    let classes = await source.classes(), datatypes = await source.datatypes()
+    let (classes, datatypes) = await source.descriptors()
     return model.descriptors.lists(classes: classes, datatypes: datatypes)
   }
 

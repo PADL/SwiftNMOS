@@ -121,15 +121,12 @@ private final class FixtureObjectSource: NcObjectSource {
     return result
   }
 
-  func classes() async -> [NcClassDescriptor] {
-    [NcClassDescriptor(classID: Self.vendorGain, name: "VendorGain", properties: [
+  func descriptors() async -> (classes: [NcClassDescriptor], datatypes: [NcDatatypeDescriptor]) {
+    let classes = [NcClassDescriptor(classID: Self.vendorGain, name: "VendorGain", properties: [
       .init(id: Self.gain, name: "gain", typeName: "NcFloat32", isReadOnly: false),
       .init(id: Self.taps, name: "taps", typeName: "VendorTap", isReadOnly: false, isSequence: true),
     ])] + laterClasses.withLock { $0 }
-  }
-
-  func datatypes() async -> [NcDatatypeDescriptor] {
-    [NcDatatypeDescriptor(name: "VendorTap", kind: .typedef(parentType: "NcInt32", isSequence: false))]
+    return (classes, [NcDatatypeDescriptor(name: "VendorTap", kind: .typedef(parentType: "NcInt32", isSequence: false))])
   }
 
   func notifications(for session: NcSession) -> AsyncStream<NcNotification> {
