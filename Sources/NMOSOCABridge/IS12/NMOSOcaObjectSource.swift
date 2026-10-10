@@ -32,7 +32,6 @@ public extension NcObjectModel where Source == NMOSOcaObjectSource {
   /// labels the OCA objects cannot.
   convenience init(
     device: OcaDevice = .shared,
-    mapping: NMOSOcaControlMapping = .standard,
     adaptations: NMOSOcaAdaptations = .standard,
     labels: any NMOSOcaLabelStore = NMOSOcaMemoryLabelStore(),
     logger: Logger = Logger(label: "com.padl.NMOSOCABridge"),
@@ -40,8 +39,7 @@ public extension NcObjectModel where Source == NMOSOcaObjectSource {
   ) {
     self.init(
       source: NMOSOcaObjectSource(
-        device: device, mapping: mapping, adaptations: adaptations, labels: labels, logger: logger,
-        resourceIDs: resourceIDs
+        device: device, adaptations: adaptations, labels: labels, logger: logger, resourceIDs: resourceIDs
       )
     )
   }
@@ -50,7 +48,7 @@ public extension NcObjectModel where Source == NMOSOcaObjectSource {
   var classManagerOid: NcOid { source.classManagerOid }
 }
 
-/// The objects of an OCA device, presented as the mapping says. Properties are read and
+/// The objects of an OCA device, presented as MS-05-02 objects. Properties are read and
 /// written by sending the object its own accessor commands, as an OCP.2 controller
 /// would, so locks, access checks and whatever the object does on a set all still apply.
 ///
@@ -93,9 +91,8 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   }
 
   private let device: OcaDevice
-  private let mapping: NMOSOcaControlMapping
   /// The oid the class manager is presented under.
-  nonisolated var classManagerOid: NcOid { mapping.oid(of: OcaClassManagerONo) }
+  nonisolated var classManagerOid: NcOid { NMOSOcaControlMapping.oid(of: OcaClassManagerONo) }
   private let adaptations: NMOSOcaAdaptations
   private let classes: NMOSOcaControlClasses
   private let labels: any NMOSOcaLabelStore
@@ -114,19 +111,17 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   nonisolated init(
     device: OcaDevice,
-    mapping: NMOSOcaControlMapping,
     adaptations: NMOSOcaAdaptations,
     labels: any NMOSOcaLabelStore,
     logger: Logger,
     resourceIDs: @escaping ResourceIDs
   ) {
     self.device = device
-    self.mapping = mapping
     self.adaptations = adaptations
     self.labels = labels
     self.logger = logger
     self.resourceIDs = resourceIDs
-    classes = NMOSOcaControlClasses(mapping: mapping, logger: logger)
+    classes = NMOSOcaControlClasses(logger: logger)
     // MS-05-02 has a class manager, which IS-12 presents the device's as; a device that
     // has not created one gets one as the bridge starts
     Task { @OcaDevice [device] in
@@ -149,14 +144,14 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// OCA's, and nothing of it is kept here.
   private func entry(_ oid: NcOid) async -> Entry? {
     guard let root = await device.rootBlock,
-          let object = await device.objects[mapping.objectNumber(of: oid)]
+          let object = await device.objects[NMOSOcaControlMapping.objectNumber(of: oid)]
     else { return nil }
-    if object === root { return Entry(object: root, owner: nil, role: mapping.rootRole) }
+    if object === root { return Entry(object: root, owner: nil, role: NMOSOcaControlMapping.rootRole) }
     // an object is in the tree if its owner is, up to the root block
-    guard let owner = await owner(of: object, root: root), await entry(mapping.oid(of: owner)) != nil else {
+    guard let owner = await owner(of: object, root: root), await entry(NMOSOcaControlMapping.oid(of: owner)) != nil else {
       return nil
     }
-    return Entry(object: object, owner: mapping.oid(of: owner), role: role(of: object))
+    return Entry(object: object, owner: NMOSOcaControlMapping.oid(of: owner), role: role(of: object))
   }
 
   /// The block an object is in: the root block for a manager, as MS-05-02 has it.
@@ -205,7 +200,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
   /// The role an object is presented under in its block: its oid is appended where a
   /// sibling before it has the same role, as roles are unique within a block.
   private func nmosRole(of entry: Entry) async -> String {
-    guard let owner = entry.owner, let block = await device.objects[mapping.objectNumber(of: owner)] else {
+    guard let owner = entry.owner, let block = await device.objects[NMOSOcaControlMapping.objectNumber(of: owner)] else {
       return entry.role
     }
     return await roles(in: block)[entry.object.objectNumber] ?? entry.role
@@ -223,7 +218,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
     for member in members {
       let role = role(of: member)
       roles[member.objectNumber] = taken.insert(role).inserted
-        ? role : role + "_\(mapping.oid(of: member.objectNumber))"
+        ? role : role + "_\(NMOSOcaControlMapping.oid(of: member.objectNumber))"
     }
     self.roles[block.objectNumber] = (listed, roles)
     return roles
@@ -265,7 +260,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       let role = roles[member.objectNumber] ?? role(of: member)
       return Identity(
         classID: classes.controlClass(of: member, role: role).classID,
-        oid: mapping.oid(of: member.objectNumber),
+        oid: NMOSOcaControlMapping.oid(of: member.objectNumber),
         owner: block.oid,
         role: role,
         object: member
@@ -659,7 +654,7 @@ public final class NMOSOcaObjectSource: NcObjectSource {
 
   /// An OCA object reported to a session's controller that one of its properties changed.
   private func changed(_ property: OcaPropertyID, of objectNumber: OcaONo, session: NcSession) async {
-    let oid = mapping.oid(of: objectNumber)
+    let oid = NMOSOcaControlMapping.oid(of: objectNumber)
     guard sessions[session]?.subscribed.contains(oid) == true, let entry = await entry(oid) else { return }
     let controlClass = classes.controlClass(of: entry.object, role: entry.role)
     guard let id = controlClass.standardIDs[property] else { return }

@@ -74,12 +74,11 @@ struct NMOSOcaControlClass: Sendable {
   let descriptors: [NcClassDescriptor]
 }
 
-/// Works out, once per OCA class, how the mapping presents it. The classes and
-/// datatypes a class manager publishes are those of the classes met so far.
+/// Works out, once per OCA class, how it is presented. The classes and datatypes a
+/// class manager publishes are those of the classes met so far.
 @OcaDevice
 final class NMOSOcaControlClasses {
-  private let mapping: NMOSOcaControlMapping
-  let datatypes: NMOSOcaDatatypes
+  let datatypes = NMOSOcaDatatypes()
   private let logger: Logger
   private var classes = [ObjectIdentifier: NMOSOcaControlClass]()
   /// Every non-standard class of the objects met so far, each once, made again when a
@@ -88,10 +87,8 @@ final class NMOSOcaControlClasses {
   /// The datatypes those descriptors refer to, and those they refer to in turn.
   private(set) var datatypeDescriptors = [NcDatatypeDescriptor]()
 
-  nonisolated init(mapping: NMOSOcaControlMapping, logger: Logger) {
-    self.mapping = mapping
+  nonisolated init(logger: Logger) {
     self.logger = logger
-    datatypes = NMOSOcaDatatypes(mapping: mapping)
   }
 
   /// Each class once: where descriptors share a class ID, as a class named only by another's
@@ -166,7 +163,7 @@ final class NMOSOcaControlClasses {
     let lineage = object.deviceClassDescriptors
     let anchored = anchors(in: lineage)
     guard let (anchorDepth, anchor) = anchored.max(by: { $0.depth < $1.depth }) else {
-      // OcaRoot is always in the lineage, so only a mapping without it gets here
+      // OcaRoot is always in the lineage, so nothing gets here
       return NMOSOcaControlClass(
         classID: NcStandardModel.object, properties: [:], methods: [:], standardIDs: [:], label: nil, descriptors: []
       )
@@ -191,7 +188,7 @@ final class NMOSOcaControlClasses {
       // a class ID names every class above it, and each is to be described, whether or
       // not a class of the object stands for it
       descriptors += ocaClass.classID.classIDs(after: lineage[depth - 1].classID).map { unstated in
-        NcClassDescriptor(classID: anchor.nc + [mapping.authorityKey] + unstated.ncIndices, name: unstated.className)
+        NcClassDescriptor(classID: anchor.nc + [NMOSOcaControlMapping.authorityKey] + unstated.ncIndices, name: unstated.className)
       }
       // a class's level is its depth by its ID, as OCA has it too
       let level = ocaClass.classID.ncLevel(under: anchor.nc)
@@ -208,7 +205,7 @@ final class NMOSOcaControlClasses {
 
   /// The classes of the lineage that have a standard counterpart, with their depth.
   private func anchors(in lineage: [OcaDeviceClassDescriptor]) -> [Anchored] {
-    mapping.anchors.compactMap { anchor in
+    NMOSOcaControlMapping.anchors.compactMap { anchor in
       lineage.firstIndex { $0.classID == anchor.oca }.map { (depth: $0, anchor: anchor) }
     }
   }
@@ -258,7 +255,7 @@ final class NMOSOcaControlClasses {
     consumed: Set<OcaPropertyID>
   ) -> ClassBindings {
     var described = ClassBindings(descriptor: NcClassDescriptor(
-      classID: anchor.nc + [mapping.authorityKey] + ocaClass.classID.ncIndices,
+      classID: anchor.nc + [NMOSOcaControlMapping.authorityKey] + ocaClass.classID.ncIndices,
       name: ocaClass.type.className
     ))
     // (a vector is listed once, under the ID of its x component)

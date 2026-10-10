@@ -83,12 +83,8 @@ final class NMOSOcaDatatypes {
   private var fields = [String: [(name: String, schema: NMOSOcaSchema)]]()
   /// The descriptors of every datatype met so far, in the order they were met.
   private(set) var descriptors = [NcDatatypeDescriptor]()
-  /// Which oid each object number is presented as.
-  private let mapping: NMOSOcaControlMapping
 
-  nonisolated init(mapping: NMOSOcaControlMapping = .standard) {
-    self.mapping = mapping
-  }
+  nonisolated init() {}
 
   // MARK: - Schemas
 
@@ -293,7 +289,7 @@ final class NMOSOcaDatatypes {
       return .integer(value)
     case .objectNumber:
       guard let value = oca.integerValue.flatMap(OcaONo.init(exactly:)) else { throw mismatch() }
-      return .integer(Int64(mapping.oid(of: value)))
+      return .integer(Int64(NMOSOcaControlMapping.oid(of: value)))
     case let .float(name):
       if let value = oca.doubleValue { return .number(value) }
       // OCP.2 writes what JSON has no number for as text; MS-05-02 has only numbers
@@ -351,7 +347,7 @@ final class NMOSOcaDatatypes {
       guard standard.integerValue != nil else { throw mismatch() }
     case .objectNumber:
       guard let oid = standard.integerValue.flatMap(NcOid.init(exactly:)) else { throw mismatch() }
-      return .integer(Int64(mapping.objectNumber(of: oid)))
+      return .integer(Int64(NMOSOcaControlMapping.objectNumber(of: oid)))
     case .float:
       guard standard.doubleValue != nil else { throw mismatch() }
     case .string, .blob, .organizationID:

@@ -177,7 +177,7 @@ final class NMOSOcaMethodTests: XCTestCase {
 
   @OcaDevice
   private func oid(of object: SwiftOCADevice.OcaRoot) -> NcOid {
-    NMOSOcaControlMapping.standard.oid(of: object.objectNumber)
+    NMOSOcaControlMapping.oid(of: object.objectNumber)
   }
 
   @OcaDevice
@@ -470,7 +470,6 @@ final class NMOSOcaMethodTests: XCTestCase {
 
   @OcaDevice
   func testNoMethodOfARegisteredClassTakesAStandardMethodsID() async throws {
-    let mapping = NMOSOcaControlMapping.standard
     let types = registeredClasses()
     XCTAssertGreaterThan(types.count, 50)
     var checked = 0
@@ -482,7 +481,7 @@ final class NMOSOcaMethodTests: XCTestCase {
         next = _getSuperclass(current)
       }
       // the deepest class of the lineage that has a standard counterpart
-      let anchors = lineage.lazy.compactMap { type in mapping.anchors.first { $0.oca == type.classID } }
+      let anchors = lineage.lazy.compactMap { type in NMOSOcaControlMapping.anchors.first { $0.oca == type.classID } }
       let anchor = try XCTUnwrap(anchors.first)
       let standard = NcStandardModel.methodIDs(of: anchor.nc)
       for method in type.deviceMethods where method.methodID.defLevel > 1 {

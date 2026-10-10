@@ -36,9 +36,9 @@ import SwiftOCADevice
 /// what OcaWorker has that NcWorker lacks keeps a class and a level of its own. OcaRoot
 /// alone is not presented, as level 1 is NcObject's; methods follow the same rule as
 /// properties, so no OCA method can take a standard method's ID (see README.md here).
-public struct NMOSOcaControlMapping: Sendable {
+enum NMOSOcaControlMapping {
   /// Where the value of a standard property comes from.
-  public enum Source: Sendable {
+  enum Source: Sendable {
     /// An OCA property of the object; one of a type with an Nc datatype of its own
     /// (`NMOSOcaNcValue`) is presented in that form.
     case property(OcaPropertyID)
@@ -46,26 +46,26 @@ public struct NMOSOcaControlMapping: Sendable {
     case members(OcaPropertyID)
   }
 
-  public struct Property: Sendable {
-    public let id: NcElementID
-    public let source: Source
+  struct Property: Sendable {
+    let id: NcElementID
+    let source: Source
 
-    public init(_ level: UInt16, _ index: UInt16, _ source: Source) {
+    init(_ level: UInt16, _ index: UInt16, _ source: Source) {
       id = NcElementID(level: level, index: index)
       self.source = source
     }
   }
 
   /// An OCA class presented as a standard class, with the standard class's own properties.
-  public struct Anchor: Sendable {
-    public let oca: OcaClassID
-    public let nc: NcClassID
-    public let properties: [Property]
+  struct Anchor: Sendable {
+    let oca: OcaClassID
+    let nc: NcClassID
+    let properties: [Property]
     /// Whether the OCA class, and the OCA classes above it, are hidden behind the standard
     /// class: nothing they have is presented beyond the standard class's elements.
-    public let hideSubclasses: Bool
+    let hideSubclasses: Bool
 
-    public init(_ oca: OcaClassID, _ nc: NcClassID, _ properties: [Property] = [], hideSubclasses: Bool = false) {
+    init(_ oca: OcaClassID, _ nc: NcClassID, _ properties: [Property] = [], hideSubclasses: Bool = false) {
       self.oca = oca
       self.nc = nc
       self.properties = properties
@@ -73,56 +73,48 @@ public struct NMOSOcaControlMapping: Sendable {
     }
   }
 
-  public let anchors: [Anchor]
-  /// The negated organisation ID of whoever defines the classes that follow the anchor.
-  public let authorityKey: Int32
-  /// The Swift name of the device manager's list of the device's managers.
-  public let managersProperty: String
-  /// MS-05-02 fixes the root block's oid and role; OCA numbers its device manager 1.
-  public let rootRole: String
-  public let oids: [OcaONo: NcOid]
-
   /// The oid an OCA object is presented under.
-  public func oid(of objectNumber: OcaONo) -> NcOid { oids[objectNumber] ?? NcOid(objectNumber.rawValue) }
+  static func oid(of objectNumber: OcaONo) -> NcOid { oids[objectNumber] ?? NcOid(objectNumber.rawValue) }
 
   /// The OCA object an oid stands for.
-  public func objectNumber(of oid: NcOid) -> OcaONo {
+  static func objectNumber(of oid: NcOid) -> OcaONo {
     oids.first { $0.value == oid }?.key ?? OcaONo(oid.rawValue)
   }
 
-  /// The mapping of OCA as AES70 defines it: AES's OUI 00-0B-5E is the authority for the
-  /// OCA classes that follow a standard class.
-  public static let standard = NMOSOcaControlMapping(
-    anchors: [
-      Anchor("1", NcStandardModel.object),
-      Anchor("1.1", NcStandardModel.worker, [
-        Property(2, 1, .property("2.1")),
-      ]),
-      Anchor("1.1.3", NcStandardModel.block, [
-        Property(2, 1, .property("2.1")),
-        Property(2, 2, .members("3.2")),
-      ]),
-      Anchor("1.1.1.21", NcStandardModel.identBeacon, [
-        Property(3, 1, .property("4.1")),
-      ]),
-      Anchor("1.3", NcStandardModel.manager),
-      // its OCA methods are NcClassManager's own, in OCA's terms
-      Anchor(SwiftOCA.OcaClassManager.classID, NcStandardModel.classManager, hideSubclasses: true),
-      Anchor("1.3.1", NcStandardModel.deviceManager, [
-        Property(3, 2, .property("3.15")),
-        Property(3, 3, .property("3.16")),
-        Property(3, 4, .property("3.2")),
-        Property(3, 5, .property("3.7")),
-        Property(3, 6, .property("3.4")),
-        Property(3, 7, .property("3.6")),
-        Property(3, 8, .property("3.17")),
-        Property(3, 9, .property("3.11")),
-        Property(3, 10, .property("3.12")),
-      ]),
-    ],
-    authorityKey: -0x000B5E,
-    managersProperty: "managers",
-    rootRole: "root",
-    oids: [OcaRootBlockONo: NcObjectModel<NMOSOcaObjectSource>.rootOid, OcaDeviceManagerONo: NcOid(OcaRootBlockONo.rawValue)]
-  )
+  /// The anchors of OCA as AES70 defines it.
+  static let anchors = [
+    Anchor("1", NcStandardModel.object),
+    Anchor("1.1", NcStandardModel.worker, [
+      Property(2, 1, .property("2.1")),
+    ]),
+    Anchor("1.1.3", NcStandardModel.block, [
+      Property(2, 1, .property("2.1")),
+      Property(2, 2, .members("3.2")),
+    ]),
+    Anchor("1.1.1.21", NcStandardModel.identBeacon, [
+      Property(3, 1, .property("4.1")),
+    ]),
+    Anchor("1.3", NcStandardModel.manager),
+    // its OCA methods are NcClassManager's own, in OCA's terms
+    Anchor(SwiftOCA.OcaClassManager.classID, NcStandardModel.classManager, hideSubclasses: true),
+    Anchor("1.3.1", NcStandardModel.deviceManager, [
+      Property(3, 2, .property("3.15")),
+      Property(3, 3, .property("3.16")),
+      Property(3, 4, .property("3.2")),
+      Property(3, 5, .property("3.7")),
+      Property(3, 6, .property("3.4")),
+      Property(3, 7, .property("3.6")),
+      Property(3, 8, .property("3.17")),
+      Property(3, 9, .property("3.11")),
+      Property(3, 10, .property("3.12")),
+    ]),
+  ]
+
+  /// AES's OUI 00-0B-5E, negated: the authority for the OCA classes that follow a standard class.
+  static let authorityKey: Int32 = -0x000B5E
+  /// MS-05-02 fixes the root block's oid and role; OCA numbers its device manager 1.
+  static let rootRole = "root"
+  static let oids: [OcaONo: NcOid] = [
+    OcaRootBlockONo: NcObjectModel<NMOSOcaObjectSource>.rootOid, OcaDeviceManagerONo: NcOid(OcaRootBlockONo.rawValue),
+  ]
 }
