@@ -201,6 +201,14 @@ final class NMOSOcaMeteringTests: XCTestCase {
     XCTAssertNotNil(methods["GetEndpointCounter"])
     XCTAssertNotNil(methods["GetCounterSet"])
     XCTAssertNotNil(methods["ResetCounters"])
+    // and a change to one reaches no IS-12 subscriber
+    let notifications = model.notifications(for: session)
+    await model.subscriptionsChanged(to: [NcOid(application.objectNumber)], session: session)
+    let counter = OcaCounter(id: 1, value: 1, initialValue: 0, role: "Packets", notifiers: [])
+    application.endpointCounterSets[1] = OcaCounterSet(counter: [counter])
+    let notified = await next(notifications)
+    XCTAssertNil(notified)
+    await model.subscriptionsChanged(to: [], session: session)
   }
 
   @OcaDevice
