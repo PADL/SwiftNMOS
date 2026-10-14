@@ -44,6 +44,9 @@ indirect enum NMOSOcaSchema: Sendable, Hashable {
   case optional(NMOSOcaSchema)
   /// A map, by the name of the struct that holds one of its entries.
   case map(String, key: NMOSOcaSchema, value: NMOSOcaSchema)
+  /// A multimap, a map whose entries may share a key, by the name of the struct that holds
+  /// one of its entries.
+  case multiMap(String, key: NMOSOcaSchema, value: NMOSOcaSchema)
 }
 
 extension NMOSOcaSchema {
@@ -123,6 +126,11 @@ final class NMOSOcaDatatypes {
       let name = try name(for: type)
       try define(structure: name, fields: [("Key", key), ("Value", value)])
       return .map(name, key: key, value: value)
+    case let .multiMap(key, value):
+      let key = try schema(of: key), value = try schema(of: value)
+      let name = try name(for: type)
+      try define(structure: name, fields: [("Key", key), ("Value", value)])
+      return .multiMap(name, key: key, value: value)
     case let .enumeration(cases):
       // MS-05-02 enumerations are of 16-bit values; another is described by its raw values
       let items = cases.compactMap { item in
@@ -193,6 +201,7 @@ final class NMOSOcaDatatypes {
     name = name.trimmingCharacters(in: ["_"])
     // a map is described by the struct that holds one of its entries
     if name.hasPrefix("Dictionary_") { name = "OcaMapItem_" + name.dropFirst("Dictionary_".count) }
+    if name.hasPrefix("OcaMultiMap_") { name = "OcaMapItem_" + name.dropFirst("OcaMultiMap_".count) }
     // only the standard's own models can be named Nc
     if name.hasPrefix("Nc") { name = "Oca" + name }
     return name
@@ -254,7 +263,7 @@ final class NMOSOcaDatatypes {
     case .classID: return .init(typeName: typedef("OcaClassID", of: "NcUint16", isSequence: true))
     case .objectNumber: return .init(typeName: "NcOid")
     case let .enumeration(name), let .structure(name): return .init(typeName: name)
-    case let .map(name, _, _): return .init(typeName: name, isSequence: true)
+    case let .map(name, _, _), let .multiMap(name, _, _): return .init(typeName: name, isSequence: true)
     case let .optional(wrapped):
       var reference = try reference(to: wrapped)
       reference.isNullable = true
@@ -327,7 +336,7 @@ final class NMOSOcaDatatypes {
       return try .array(items.map { try standard(from: $0, as: element) })
     case let .optional(wrapped):
       return oca.isNull ? .null : try standard(from: oca, as: wrapped)
-    case let .map(_, key, value):
+    case let .map(_, key, value), let .multiMap(_, key, value):
       guard let entries = oca.arrayValue else { throw mismatch() }
       return try .array(entries.map { entry in
         guard let pair = entry.arrayValue, pair.count == 2 else { throw mismatch() }
@@ -384,14 +393,15 @@ final class NMOSOcaDatatypes {
       return try .array(items.map { try oca(from: $0, as: element) })
     case let .optional(wrapped):
       return standard.isNull ? .null : try oca(from: standard, as: wrapped)
-    case let .map(_, key, value):
+    case let .map(_, key, value), let .multiMap(_, key, value):
       // a sequence may hold a key twice and a map cannot: the first entry for a key is kept
       guard let entries = standard.arrayValue else { throw mismatch() }
+      let isMultiMap = if case .multiMap = schema { true } else { false }
       var keys = Set<NMOSJSONValue>()
       return try .array(entries.compactMap { entry in
         guard let entryKey = entry["Key"], let entryValue = entry["Value"] else { throw mismatch() }
         let ocaKey = try oca(from: entryKey, as: key)
-        guard keys.insert(ocaKey).inserted else { return nil }
+        guard isMultiMap || keys.insert(ocaKey).inserted else { return nil }
         return try [ocaKey, oca(from: entryValue, as: value)]
       })
     }
