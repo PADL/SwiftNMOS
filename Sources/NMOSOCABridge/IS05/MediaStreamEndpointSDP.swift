@@ -28,12 +28,13 @@ public protocol MediaStreamEndpointSDPRepresentable: SwiftOCADevice.OcaMediaTran
   /// no stream.
   func getActiveSDP(_ id: OcaMediaStreamEndpointID) async throws -> OcaSDPString
 
-  /// Subscribes an input endpoint to the stream the description and stream ID select
-  /// (see `MediaStreamSDP.selectStream`); an empty description clears the subscription.
+  /// Subscribes an input endpoint to the stream the description and stream ID, an SDP
+  /// `<ssrc-id>`, select (see `MediaStreamSDP.selectStream`); an empty description clears
+  /// the subscription.
   func configureEndpointFromSDP(
     endpointID: OcaMediaStreamEndpointID,
     sdpString: OcaSDPString,
-    streamID: OcaUint16,
+    streamID: OcaUint32,
     from controller: any OcaController
   ) async throws
 
@@ -200,22 +201,31 @@ public extension MediaStreamSDP {
   }
 
   /// AES70-21 §10.2.4 stream selection: the session section with the one media section
-  /// whose port is `streamID`. A single stream also matches a zero stream ID; a
-  /// multistream description needs a nonzero one.
-  static func selectStream(in sdpString: OcaSDPString, streamID: OcaUint16) throws -> OcaSDPString {
+  /// `streamID`, an SDP Stream Source ID (`<ssrc-id>`, RFC 5576), selects, following the
+  /// draft's Tables 18 and 19. A single stream is selected unless it and a nonzero stream
+  /// ID name different `<ssrc-id>`s; each stream of a multistream description needs an
+  /// `<ssrc-id>`, and a nonzero stream ID must name one of them.
+  static func selectStream(in sdpString: OcaSDPString, streamID: OcaUint32) throws -> OcaSDPString {
     let (session, media) = sections(of: sdpString)
-    // m=<media> <port>[/<number of ports>] <proto> <fmt>
-    func port(_ section: [Substring]) -> OcaUint16? {
-      let fields = section[0].dropFirst(2).split(separator: " ")
-      return fields.count > 1 ? fields[1].split(separator: "/").first.flatMap { OcaUint16($0) } : nil
+    let index = try Aes67Adaptation.selectStream(streamID: streamID, ssrcIDs: media.map(ssrcID(of:)))
+    return (session + media[index]).joined(separator: "\r\n") + "\r\n"
+  }
+
+  /// The `<ssrc-id>` of each stream of a description, in order; zero for a stream without.
+  static func ssrcIDs(in sdpString: OcaSDPString) -> [OcaUint32] {
+    sections(of: sdpString).media.map(ssrcID(of:))
+  }
+
+  /// A media section's `<ssrc-id>`: that of its first "a=ssrc:" line (RFC 5576 §4.1),
+  /// or zero when it has none.
+  private static func ssrcID(of section: [Substring]) -> OcaUint32 {
+    for line in section where line.hasPrefix("a=ssrc:") {
+      // a=ssrc:<ssrc-id> <attribute>[:<value>]
+      if let id = line.dropFirst(7).split(separator: " ", maxSplits: 1).first.flatMap({ OcaUint32($0) }) {
+        return id
+      }
     }
-    let selected: [Substring]? = if streamID == 0 {
-      media.count == 1 ? media[0] : nil
-    } else {
-      media.first { port($0) == streamID }
-    }
-    guard let selected else { throw Ocp1Error.status(.parameterError) }
-    return (session + selected).joined(separator: "\r\n") + "\r\n"
+    return 0
   }
 
   private static func sections(

@@ -25,13 +25,13 @@ import XCTest
 /// An AES67 application as a device implements it: an endpoint configured from a
 /// description then reports that description as its active one.
 final class TestAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplication {
-  var configured = [(id: OcaMediaStreamEndpointID, sdp: OcaSDPString, streamID: OcaUint16)]()
+  var configured = [(id: OcaMediaStreamEndpointID, sdp: OcaSDPString, streamID: OcaUint32)]()
   var refusal: OcaStatus?
 
   override func configureEndpointFromSDP(
     endpointID id: OcaMediaStreamEndpointID,
     sdpString: OcaSDPString,
-    streamID: OcaUint16,
+    streamID: OcaUint32,
     from controller: any OcaController
   ) async throws {
     if let refusal { throw Ocp1Error.status(refusal) }
@@ -62,7 +62,7 @@ final class TestDanteAes67Application: SwiftOCADevice.DanteOcaMediaTransportAppl
   func configureEndpointFromSDP(
     endpointID id: OcaMediaStreamEndpointID,
     sdpString: OcaSDPString,
-    streamID: OcaUint16,
+    streamID: OcaUint32,
     from controller: any OcaController
   ) async throws {
     active[id] = sdpString
@@ -184,7 +184,8 @@ final class RTPConnectionTests: XCTestCase {
     XCTAssertEqual(application.configured.first?.id, 1)
     // the device is given the description exactly as the sender published it
     XCTAssertEqual(application.configured.first?.sdp, Self.sourceSpecific)
-    XCTAssertEqual(application.configured.first?.streamID, 5000)
+    // a single stream without an <ssrc-id> is named by a zero stream ID (AES70-21 Table 18)
+    XCTAssertEqual(application.configured.first?.streamID, 0)
 
     let active = try await stack.send(.GET, "\(path)/active")
     XCTAssertEqual(active.json?["master_enable"], true)
@@ -193,6 +194,43 @@ final class RTPConnectionTests: XCTestCase {
       "destination_port": 5000, "rtp_enabled": true,
     ]])
     XCTAssertEqual(active.json?["transport_file"]?["type"], "application/sdp")
+  }
+
+  @OcaDevice
+  func testATransportFileStreamIsNamedByItsSSRC() async throws {
+    let application = try await makeApplication()
+    let stack = try await ConnectionStack([application])
+    let file = Self.sourceSpecific + "a=ssrc:3735928559 cname:stage-left\r\n"
+    let result = try await stack.send(.PATCH, "receivers/\(stack.id(application, 1))/staged", [
+      "master_enable": true, "activation": ["mode": "activate_immediate"],
+      "transport_file": ["data": .string(file), "type": "application/sdp"],
+    ])
+    XCTAssertEqual(result.status, .ok)
+    XCTAssertEqual(application.configured.first?.sdp, file)
+    XCTAssertEqual(application.configured.first?.streamID, 0xDEAD_BEEF)
+  }
+
+  func testStreamsAreSelectedBySSRC() throws {
+    let session = "v=0\r\no=- 1 1 IN IP4 10.0.0.1\r\ns=Pair\r\nt=0 0\r\n"
+    let first = "m=audio 5004 RTP/AVP 97\r\nc=IN IP4 239.1.1.1/32\r\na=rtpmap:97 L24/48000/2\r\n"
+    let second = "m=audio 5006 RTP/AVP 97\r\nc=IN IP4 239.1.1.2/32\r\na=rtpmap:97 L24/48000/2\r\n"
+    let firstSSRC = first + "a=ssrc:1111 cname:a\r\n"
+    let secondSSRC = second + "a=ssrc:2222 cname:b\r\na=ssrc:2222 label:b\r\n"
+
+    // Table 18: a single stream
+    XCTAssertEqual(try MediaStreamSDP.selectStream(in: session + first, streamID: 0), session + first)
+    XCTAssertEqual(try MediaStreamSDP.selectStream(in: session + first, streamID: 1111), session + first)
+    XCTAssertEqual(try MediaStreamSDP.selectStream(in: session + firstSSRC, streamID: 1111), session + firstSSRC)
+    XCTAssertThrowsError(try MediaStreamSDP.selectStream(in: session + firstSSRC, streamID: 2222))
+
+    // Table 19: more than one stream
+    XCTAssertEqual(MediaStreamSDP.ssrcIDs(in: session + firstSSRC + secondSSRC), [1111, 2222])
+    XCTAssertEqual(
+      try MediaStreamSDP.selectStream(in: session + firstSSRC + secondSSRC, streamID: 2222),
+      session + secondSSRC
+    )
+    XCTAssertThrowsError(try MediaStreamSDP.selectStream(in: session + firstSSRC + secondSSRC, streamID: 0))
+    XCTAssertThrowsError(try MediaStreamSDP.selectStream(in: session + firstSSRC + second, streamID: 1111))
   }
 
   func testEveryMediaAttributeIsRead() throws {
@@ -228,7 +266,7 @@ final class RTPConnectionTests: XCTestCase {
     let sdp = try XCTUnwrap(MediaStreamSDP(sdpString: XCTUnwrap(application.configured.first?.sdp)))
     XCTAssertEqual(sdp.destinationAddress, "232.20.44.7")
     XCTAssertEqual(sdp.destinationPort, 6000)
-    XCTAssertEqual(application.configured.first?.streamID, 6000)
+    XCTAssertEqual(application.configured.first?.streamID, 0)
     // what the parameters did not contradict is still the file's
     XCTAssertEqual(sdp.sourceAddress, "172.29.226.24")
     XCTAssertEqual(sdp.channelCount, 2)

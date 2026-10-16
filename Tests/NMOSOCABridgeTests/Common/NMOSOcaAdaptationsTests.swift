@@ -30,7 +30,7 @@ private final class PartlyDescribedApplication: SwiftOCADevice.DanteOcaMediaTran
   func configureEndpointFromSDP(
     endpointID id: OcaMediaStreamEndpointID,
     sdpString: OcaSDPString,
-    streamID: OcaUint16,
+    streamID: OcaUint32,
     from controller: any OcaController
   ) async throws {}
 

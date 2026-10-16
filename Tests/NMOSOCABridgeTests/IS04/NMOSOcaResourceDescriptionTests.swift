@@ -132,7 +132,7 @@ private final class SDPApplication: SwiftOCADevice.OcaMediaTransportApplication,
   func configureEndpointFromSDP(
     endpointID id: OcaMediaStreamEndpointID,
     sdpString: OcaSDPString,
-    streamID: OcaUint16,
+    streamID: OcaUint32,
     from controller: any OcaController
   ) async throws {
     active[id] = sdpString

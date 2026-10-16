@@ -155,7 +155,7 @@ extension NMOSOcaRTPAdaptation {
     for endpoint: NMOSOcaEndpoint,
     staged: NMOSConnectionState,
     _ parameters: NMOSTransportParameters
-  ) async throws -> (OcaSDPString, OcaUint16) {
+  ) async throws -> (OcaSDPString, OcaUint32) {
     var original: (text: OcaSDPString, sdp: MediaStreamSDP)?
     if let file = staged.transportFile, file.data != nil {
       original = try stream(of: file)
@@ -190,10 +190,12 @@ extension NMOSOcaRTPAdaptation {
     if let original, original.sdp.destinationAddress == sdp.destinationAddress,
        original.sdp.destinationPort == sdp.destinationPort, original.sdp.sourceAddress == sdp.sourceAddress
     {
-      // nothing the parameters say differs from the file, so the device gets the file
-      return (original.text, original.sdp.destinationPort)
+      // nothing the parameters say differs from the file, so the device gets the file;
+      // its one stream is named by <ssrc-id> if it has one (AES70-21 Table 18)
+      return (original.text, MediaStreamSDP.ssrcIDs(in: original.text).first ?? 0)
     }
-    return (sdp.sdpString, sdp.destinationPort)
+    // a rendered description has a single stream and no <ssrc-id>
+    return (sdp.sdpString, 0)
   }
 
   /// A description in the endpoint's current stream mode, for a receiver that is given
@@ -218,7 +220,7 @@ extension NMOSOcaRTPAdaptation {
     )
   }
 
-  private func configure(_ endpoint: NMOSOcaEndpoint, sdpString: OcaSDPString, streamID: OcaUint16) async throws {
+  private func configure(_ endpoint: NMOSOcaEndpoint, sdpString: OcaSDPString, streamID: OcaUint32) async throws {
     let id = endpoint.endpoint.idInternal
     do {
       switch endpoint.application {
