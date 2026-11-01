@@ -40,6 +40,10 @@ final class NMOSFlyingFoxHTTPClientTests: XCTestCase {
       )
     }
     await server.appendRoute("DELETE /gone") { _ in HTTPResponse(statusCode: .noContent) }
+    await server.appendRoute("GET /query") { request in
+      let items = request.query.map { "\($0.name)=\($0.value)" }.joined(separator: "&")
+      return HTTPResponse(statusCode: .ok, body: Data(items.utf8))
+    }
     await server.appendRoute("GET /slow") { _ in
       try await Task.sleep(for: .seconds(5))
       return HTTPResponse(statusCode: .ok)
@@ -70,6 +74,15 @@ final class NMOSFlyingFoxHTTPClientTests: XCTestCase {
     XCTAssertEqual(response.body, body)
     XCTAssertEqual(response.headers["location"], "/there")
     XCTAssertEqual(response.headers["x-content-type"], "application/json")
+  }
+
+  func testSendsTheQuery() async throws {
+    let target = try url("/query?paging.limit=500&paging.since=1793438318:171387447")
+    let response = try await NMOSFlyingFoxHTTPClient().send(.GET, target, body: nil)
+    XCTAssertEqual(
+      String(decoding: response.body, as: UTF8.self),
+      "paging.limit=500&paging.since=1793438318:171387447"
+    )
   }
 
   func testReturnsAnyStatusAndAnEmptyBody() async throws {

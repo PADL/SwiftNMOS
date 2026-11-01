@@ -61,8 +61,12 @@ public struct NMOSFlyingFoxHTTPClient: NMOSHTTPClient {
       HTTPHeader("Connection"): "close",
     ]
     if body != nil { headers[.contentType] = "application/json" }
+    let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
     let request = HTTPRequest(
-      method: method, version: .http11, path: url.path.isEmpty ? "/" : url.path, query: [],
+      method: method,
+      version: .http11,
+      path: url.path.isEmpty ? "/" : url.path,
+      query: query.map { .init(name: $0.name, value: $0.value ?? "") },
       headers: headers, body: HTTPBodySequence(data: body ?? Data())
     )
     let timeout = timeout
