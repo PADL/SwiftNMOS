@@ -90,14 +90,40 @@ final class NMOSOcaServiceDiscoveryTests: XCTestCase {
     }
 
     try await registration.update(txt: ["ver_slf": "1", "ver_snd": "7"])
-    // a new browse resolves afresh; the responder may answer from its cache at first
-    var updated: NMOSDiscoveredService?
-    for _ in 0..<10 {
-      updated = await browse(until: { $0.contains { $0.name == name } })?.first { $0.name == name }
-      if updated?.txt["ver_slf"] == "1" { break }
-      try await Task.sleep(for: .milliseconds(300))
-    }
+    // a new resolution may answer first with the record as it was, and then with this
+    let updated = await browse(until: { $0.first { $0.name == name }?.txt["ver_slf"] == "1" })?
+      .first { $0.name == name }
     XCTAssertEqual(updated?.txt, ["ver_slf": "1", "ver_snd": "7"])
+    await registration.withdraw()
+  }
+
+  func testABrowseLeftOpenIsToldOfEachUpdate() async throws {
+    let name = uniqueName()
+    let registration = try await advertise(advertisement(name, txt: ["ver_snd": "0"]))
+    defer { Task { await registration.withdraw() } }
+
+    let found = discovery.browse(type: Self.type)
+    let observed = Task { () -> [String] in
+      var counters = [String]()
+      for await services in found {
+        guard let counter = services.first(where: { $0.name == name })?.txt["ver_snd"] else { continue }
+        counters.append(counter)
+        if counters.count == 4 { break }
+        try await registration.update(txt: ["ver_snd": String(counters.count)])
+      }
+      return counters
+    }
+    let deadline = Task {
+      try await Task.sleep(for: .seconds(8))
+      observed.cancel()
+    }
+    let counters = try await observed.value
+    deadline.cancel()
+
+    guard !counters.isEmpty else {
+      throw XCTSkip("the DNS-SD responder did not report the advertised service")
+    }
+    XCTAssertEqual(counters, ["0", "1", "2", "3"])
     await registration.withdraw()
   }
 

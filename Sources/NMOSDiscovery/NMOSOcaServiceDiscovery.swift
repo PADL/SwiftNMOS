@@ -107,7 +107,7 @@ public struct NMOSOcaServiceDiscovery: NMOSServiceDiscovery {
   private static func observe(type: String, domain: String?, into found: NMOSOcaDiscoveredServices) async {
     let (resolved, continuation) = AsyncStream<[NMOSDiscoveredService]>
       .makeStream(bufferingPolicy: .bufferingNewest(1))
-    let browser = NMOSOcaServiceBrowser(continuation: continuation) { await Self.resolve($0) }
+    let browser = NMOSOcaServiceBrowser(continuation: continuation) { Self.resolutions(of: $0) }
     await withTaskGroup(of: Void.self) { group in
       group.addTask { await browse(type: type, domain: domain, into: browser, continuation) }
       group.addTask {
@@ -139,43 +139,46 @@ public struct NMOSOcaServiceDiscovery: NMOSServiceDiscovery {
     continuation.finish()
   }
 
-  /// Where the instance can be reached, nil if it does not resolve in time.
-  private static func resolve(_ event: NMOSOcaBrowseEvent) async -> NMOSDiscoveredService? {
-    guard let resolution = await resolution(of: event), !Task.isCancelled else { return nil }
-    // a numeric address spares the consumer resolving a `.local` name itself
+  /// Where the instance can be reached, and again whenever that or its TXT record changes,
+  /// until the consumer stops iterating. A responder keeps answering for as long as it is
+  /// asked, and asking is the only way to hear of a new TXT record: to a browse, an instance
+  /// that has only changed has not gone away or arrived. The stream ends if the first answer
+  /// does not come in time, or if resolution fails.
+  private static func resolutions(of event: NMOSOcaBrowseEvent) -> AsyncStream<NMOSDiscoveredService> {
+    let answers = DNSServiceDiscovery.resolve(name: event.name, regType: event.regType, domain: event.domain)
+    return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+      let deadline = Task {
+        try await Task.sleep(for: resolveTimeout)
+        continuation.finish()
+      }
+      let reader = Task {
+        var hosts = [String: String]()
+        for await answer in answers {
+          deadline.cancel()
+          let hostname = answer.hostname
+          if hosts[hostname] == nil { hosts[hostname] = await host(of: answer) }
+          guard !Task.isCancelled, let host = hosts[hostname] else { break }
+          continuation.yield(NMOSDiscoveredService(
+            name: event.name, host: host, port: answer.port, txt: answer.txtRecords
+          ))
+        }
+        continuation.finish()
+      }
+      continuation.onTermination = { _ in
+        deadline.cancel()
+        reader.cancel()
+      }
+    }
+  }
+
+  /// A numeric address spares the consumer resolving a `.local` name itself.
+  private static func host(of resolution: DNSServiceResolution) async -> String {
     let addresses = await DNSServiceDiscovery.addresses(
       of: resolution.hostname,
       interfaceIndex: resolution.interfaceIndex
     )
     let hostname = resolution.hostname
-    return NMOSDiscoveredService(
-      name: event.name,
-      host: addresses.first ?? (hostname.hasSuffix(".") ? String(hostname.dropLast()) : hostname),
-      port: resolution.port,
-      txt: resolution.txtRecords
-    )
-  }
-
-  /// The first answer to resolving the instance, nil if none comes in time.
-  private static func resolution(of event: NMOSOcaBrowseEvent) async -> DNSServiceResolution? {
-    let resolutions = DNSServiceDiscovery.resolve(
-      name: event.name,
-      regType: event.regType,
-      domain: event.domain
-    )
-    return await withTaskGroup(of: DNSServiceResolution?.self) { group in
-      group.addTask {
-        for await resolution in resolutions { return resolution }
-        return nil
-      }
-      group.addTask {
-        try? await Task.sleep(for: resolveTimeout)
-        return nil
-      }
-      let first = await group.next() ?? nil
-      group.cancelAll()
-      return first
-    }
+    return addresses.first ?? (hostname.hasSuffix(".") ? String(hostname.dropLast()) : hostname)
   }
 
   /// A TXT record's entries in a fixed order, so the same dictionary is the same record.
@@ -219,10 +222,12 @@ struct NMOSOcaBrowseEvent: Sendable, Hashable {
   let interfaceIndex: UInt32
 }
 
-/// Observes one browse: resolves each instance it finds and reports the resolved set.
-/// It is told what the browse finds and how to resolve it, and knows nothing of dns_sd.
+/// Observes one browse: resolves each instance it finds, goes on listening to what that
+/// resolves to, and reports the resolved set. It is told what the browse finds and how to
+/// resolve it, and knows nothing of dns_sd.
 actor NMOSOcaServiceBrowser {
-  typealias Resolver = @Sendable (NMOSOcaBrowseEvent) async -> NMOSDiscoveredService?
+  /// What an instance resolves to, each time that changes. A stream that ends has failed.
+  typealias Resolver = @Sendable (NMOSOcaBrowseEvent) -> AsyncStream<NMOSDiscoveredService>
 
   private struct Instance: Hashable {
     let name: String
@@ -231,7 +236,7 @@ actor NMOSOcaServiceBrowser {
 
   private let continuation: AsyncStream<[NMOSDiscoveredService]>.Continuation
   private let resolver: Resolver
-  /// The wait before resolving again an instance that did not resolve: the first wait,
+  /// The wait before resolving again an instance whose resolution ended: the first wait,
   /// doubled each time up to the last.
   private let resolveBackoff: ClosedRange<Duration>
   /// The interfaces each instance has been seen on; it is gone when it has left them all.
@@ -265,17 +270,17 @@ actor NMOSOcaServiceBrowser {
     }
   }
 
-  /// Resolves the instance, again and less often for as long as it is advertised and
-  /// does not resolve: a browse reports an instance once, so nothing else would retry.
+  /// Follows what the instance resolves to, starting again and less often for as long as
+  /// it is advertised and resolving ends: a browse reports an instance once, so nothing
+  /// else would retry. What it last resolved to stands until then.
   private func resolve(_ instance: Instance, as event: NMOSOcaBrowseEvent) async {
     var wait = resolveBackoff.lowerBound
     while !Task.isCancelled, interfaces[instance] != nil {
-      if let service = await resolver(event) {
+      for await service in resolver(event) {
         guard !Task.isCancelled, interfaces[instance] != nil else { return }
+        guard resolved[instance] != service else { continue }
         resolved[instance] = service
-        resolving[instance] = nil
         report()
-        return
       }
       try? await Task.sleep(for: wait)
       wait = min(wait * 2, resolveBackoff.upperBound)
