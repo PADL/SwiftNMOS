@@ -15,10 +15,6 @@
 //
 
 import Foundation
-#if canImport(Glibc)
-// Swift 6 otherwise takes `stdout`, a mutable global there, not to be safe to read
-@preconcurrency import Glibc
-#endif
 import NMOS
 import NMOSClient
 import NMOSDiscovery
@@ -44,7 +40,10 @@ func snapshots() async -> AsyncStream<NMOSRegistrySnapshot>? {
   return NMOSRegistryMirror(client: NMOSQueryClient(baseURL: url)).snapshots()
 }
 
+#if canImport(Darwin)
+// Swift 6 won't have `stdout` read on Linux, where it's a mutable global
 setvbuf(stdout, nil, _IOLBF, 0)
+#endif
 guard let snapshots = await snapshots() else { exit(1) }
 for await snapshot in snapshots {
   print(
