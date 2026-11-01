@@ -24,19 +24,52 @@ import XCTest
 /// The browser without a responder: it is told what a browse finds, and its resolver
 /// answers as the test decides.
 final class NMOSOcaServiceBrowserTests: XCTestCase {
-  /// A resolver that fails a given number of times before it succeeds.
+  /// A resolver that fails a given number of times before it succeeds, and then goes on
+  /// answering as the test tells it to.
   private final class Resolver: Sendable {
-    private let state: Mutex<(failures: Int, calls: Int)>
+    private struct State {
+      var failures: Int
+      var calls = 0
+      var open = [AsyncStream<NMOSDiscoveredService>.Continuation]()
+    }
 
-    init(failures: Int) { state = Mutex((failures, 0)) }
+    private let state: Mutex<State>
+
+    init(failures: Int) { state = Mutex(State(failures: failures)) }
 
     var calls: Int { state.withLock { $0.calls } }
 
-    func resolve(_ event: NMOSOcaBrowseEvent) -> NMOSDiscoveredService? {
+    private func service(_ name: String, txt: [String: String]) -> NMOSDiscoveredService {
+      NMOSDiscoveredService(name: name, host: "192.0.2.7", port: 8010, txt: txt)
+    }
+
+    func resolve(_ event: NMOSOcaBrowseEvent) -> AsyncStream<NMOSDiscoveredService> {
+      let (answers, continuation) = AsyncStream<NMOSDiscoveredService>.makeStream()
       state.withLock { state in
         state.calls += 1
-        guard state.calls > state.failures else { return nil }
-        return NMOSDiscoveredService(name: event.name, host: "192.0.2.7", port: 8010, txt: ["pri": "0"])
+        guard state.calls > state.failures else { return continuation.finish() }
+        state.open.append(continuation)
+        continuation.yield(service(event.name, txt: ["pri": "0"]))
+      }
+      return answers
+    }
+
+    func answer(_ name: String = "registry", txt: [String: String]) {
+      let answer = service(name, txt: txt)
+      state.withLock { state in
+        for continuation in state.open {
+          continuation.yield(answer)
+        }
+      }
+    }
+
+    /// Ends the resolutions there are, as a failure would.
+    func fail() {
+      state.withLock { state in
+        for continuation in state.open {
+          continuation.finish()
+        }
+        state.open.removeAll()
       }
     }
   }
@@ -98,6 +131,68 @@ final class NMOSOcaServiceBrowserTests: XCTestCase {
     // once resolved it is left alone
     try await Task.sleep(for: .milliseconds(120))
     XCTAssertEqual(resolver.calls, 3)
+  }
+
+  func testAnInstanceWhoseTXTRecordChangesIsReportedAgain() async throws {
+    // to a browse nothing has happened: only what it resolves to says so
+    let resolver = Resolver(failures: 0)
+    let (browser, reports) = makeBrowser(resolver)
+    await browser.handle(event())
+    _ = await reports.report(after: 0)
+
+    resolver.answer(txt: ["pri": "1"])
+    let services = await reports.report(after: 1)
+    XCTAssertEqual(services?.first?.txt, ["pri": "1"])
+    XCTAssertEqual(resolver.calls, 1)
+  }
+
+  func testAnAnswerThatChangesNothingIsNotReported() async throws {
+    // a responder answers once for each interface it has the service on
+    let resolver = Resolver(failures: 0)
+    let (browser, reports) = makeBrowser(resolver)
+    await browser.handle(event())
+    _ = await reports.report(after: 0)
+
+    resolver.answer(txt: ["pri": "0"])
+    resolver.answer(txt: ["pri": "0"])
+    resolver.answer(txt: ["pri": "1"])
+    let services = await reports.report(after: 1)
+    XCTAssertEqual(services?.first?.txt, ["pri": "1"])
+    XCTAssertEqual(reports.all.count, 2)
+  }
+
+  func testAResolutionThatEndsIsStartedAgainAndWhatItFoundStands() async throws {
+    let resolver = Resolver(failures: 0)
+    let (browser, reports) = makeBrowser(resolver)
+    await browser.handle(event())
+    _ = await reports.report(after: 0)
+
+    resolver.fail()
+    let deadline = ContinuousClock.now + .seconds(3)
+    while resolver.calls < 2, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(5))
+    }
+    XCTAssertEqual(resolver.calls, 2)
+    // the instance is still advertised, and answers as it did: there is nothing to report
+    XCTAssertEqual(reports.all.count, 1)
+
+    resolver.answer(txt: ["pri": "1"])
+    let services = await reports.report(after: 1)
+    XCTAssertEqual(services?.first?.txt, ["pri": "1"])
+  }
+
+  func testStopsListeningToAnInstanceThatIsWithdrawn() async throws {
+    let resolver = Resolver(failures: 0)
+    let (browser, reports) = makeBrowser(resolver)
+    await browser.handle(event())
+    _ = await reports.report(after: 0)
+
+    await browser.handle(event(isAdded: false))
+    let gone = await reports.report(after: 1)
+    XCTAssertEqual(gone, [])
+    resolver.answer(txt: ["pri": "1"])
+    try await Task.sleep(for: .milliseconds(50))
+    XCTAssertEqual(reports.all.count, 2)
   }
 
   func testStopsResolvingAnInstanceThatIsWithdrawn() async throws {

@@ -67,6 +67,7 @@ public struct NMOSDiscoveredService: Sendable, Hashable {
 public protocol NMOSServiceDiscovery: Sendable {
   func advertise(_ advertisement: NMOSServiceAdvertisement) async throws -> any NMOSServiceRegistration
 
-  /// The resolved services of a type, delivered again in full whenever the set changes.
+  /// The resolved services of a type, delivered again in full whenever the set or anything
+  /// about a service in it changes, its TXT record included.
   func browse(type: String) -> AsyncStream<[NMOSDiscoveredService]>
 }
