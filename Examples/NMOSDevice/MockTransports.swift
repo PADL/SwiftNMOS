@@ -60,7 +60,7 @@ final class MockAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
   override func configureEndpointFromSDP(
     endpointID id: OcaMediaStreamEndpointID,
     sdpString: OcaSDPString,
-    streamID: OcaUint16,
+    streamID: OcaUint32,
     from controller: any OcaController
   ) async throws {
     try setActiveSDP(sdpString, endpoint: id)
