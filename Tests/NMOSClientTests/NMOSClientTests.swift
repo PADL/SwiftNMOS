@@ -18,15 +18,29 @@ import FlyingFox
 import Foundation
 import NMOS
 @testable import NMOSClient
+import Synchronization
 import XCTest
 
-private final class FakeHTTP: NMOSHTTPClient, @unchecked Sendable {
-  var responses = [String: NMOSHTTPClientResponse]()
-  var requests = [(HTTPMethod, URL, Data?)]()
+private final class FakeHTTP: NMOSHTTPClient, Sendable {
+  private struct State {
+    var responses = [String: NMOSHTTPClientResponse]()
+    var requests = [(HTTPMethod, URL, Data?)]()
+  }
+
+  private let state = Mutex(State())
+
+  var responses: [String: NMOSHTTPClientResponse] {
+    get { state.withLock { $0.responses } }
+    set { state.withLock { $0.responses = newValue } }
+  }
+
+  var requests: [(HTTPMethod, URL, Data?)] { state.withLock { $0.requests } }
 
   func send(_ method: HTTPMethod, _ url: URL, body: Data?) async throws -> NMOSHTTPClientResponse {
-    requests.append((method, url, body))
-    return responses[url.absoluteString] ?? NMOSHTTPClientResponse(status: 404)
+    state.withLock {
+      $0.requests.append((method, url, body))
+      return $0.responses[url.absoluteString] ?? NMOSHTTPClientResponse(status: 404)
+    }
   }
 }
 
