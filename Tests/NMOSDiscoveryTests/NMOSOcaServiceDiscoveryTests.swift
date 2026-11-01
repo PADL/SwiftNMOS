@@ -16,7 +16,7 @@
 
 import Foundation
 import NMOS
-import NMOSOCABridge
+import NMOSDiscovery
 import XCTest
 
 /// Runs against whichever DNS-SD responder the host has and is skipped where it has

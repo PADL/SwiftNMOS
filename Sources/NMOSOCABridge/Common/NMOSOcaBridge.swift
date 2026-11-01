@@ -16,6 +16,7 @@
 
 import Foundation
 import Logging
+@_exported import NMOSDiscovery
 import NMOS
 import SwiftOCADevice
 import Synchronization

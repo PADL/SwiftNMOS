@@ -17,7 +17,7 @@
 
 import Foundation
 import NMOS
-@testable import NMOSOCABridge
+@testable import NMOSDiscovery
 import Synchronization
 import XCTest
 
