@@ -18,7 +18,8 @@ import Foundation
 import Logging
 import NMOS
 
-/// What a registry holds of what a controller routes.
+/// What a registry holds of what a controller routes, or what `NMOSPeerMirror` puts together
+/// to the same effect where there is no registry.
 public struct NMOSRegistrySnapshot: Sendable, Hashable {
   public var nodes = [NMOSID: NMOSNodeResource]()
   public var devices = [NMOSID: NMOSDeviceResource]()

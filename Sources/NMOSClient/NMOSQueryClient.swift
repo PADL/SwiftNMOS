@@ -65,7 +65,7 @@ public struct NMOSQueryClient: Sendable {
 
   private static func path(_ kind: NMOSResourceKind) -> String { "\(kind.rawValue)s" }
 
-  private struct Lossy<Value: Decodable>: Decodable {
+  struct Lossy<Value: Decodable>: Decodable {
     let value: Value?
 
     init(from decoder: any Decoder) throws {

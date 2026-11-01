@@ -25,6 +25,18 @@ public enum NMOSResourceKind: String, Sendable, Codable, CaseIterable, Hashable 
 
   /// Registration order: a resource is registered after the resource it refers to.
   public static let registrationOrder: [Self] = [.node, .device, .source, .flow, .sender, .receiver]
+
+  /// The DNS-SD TXT record a node operating peer-to-peer counts changes to this collection in.
+  public var counterName: String {
+    switch self {
+    case .node: "ver_slf"
+    case .device: "ver_dvc"
+    case .source: "ver_src"
+    case .flow: "ver_flw"
+    case .sender: "ver_snd"
+    case .receiver: "ver_rcv"
+    }
+  }
 }
 
 /// An optional value the schemas require to be present, written as `null` rather than

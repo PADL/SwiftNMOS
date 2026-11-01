@@ -88,9 +88,11 @@ let package = Package(
       name: "NMOSDiscoveryTests",
       dependencies: [
         "NMOS",
+        "NMOSClient",
         "NMOSDiscovery",
         .product(name: "SwiftOCA", package: "SwiftOCA"),
         .product(name: "SwiftOCADevice", package: "SwiftOCA"),
+        .product(name: "FlyingFox", package: "FlyingFox"),
       ]
     ),
     .testTarget(
