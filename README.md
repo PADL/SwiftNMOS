@@ -9,8 +9,10 @@ An [AMWA NMOS](https://specs.amwa.tv/nmos/) node in Swift, and a bridge that pre
   MS-05-02 model, its standard descriptors generated from the AMWA model files. The
   host supplies the HTTP server (FlyingFox), DNS-SD and a connection provider.
 - **`NMOSClient`** is a controller's side of NMOS: the IS-04 Query API, read and followed by
-  subscription, and IS-05 connection. `NMOSRegistryMirror` keeps a copy of a registry, and
-  `NMOSRegistryLocator` finds one by DNS-SD.
+  subscription, the Node API, and IS-05 connection. `NMOSRegistryMirror` keeps a copy of a
+  registry, and `NMOSRegistryLocator` finds one by DNS-SD. Where there is none, `NMOSPeerMirror`
+  delivers the same from the nodes advertising themselves, reading each when its `ver_` TXT
+  records change.
 - **`NMOSDiscovery`** is DNS-SD for NMOS services, for those not wanting the bridge.
 - **`NMOSOCABridge`** maps a SwiftOCADevice device onto `NMOS`. One `NMOSOcaBridge`
   describes the device as IS-04 resources from its media transport applications, and

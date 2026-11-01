@@ -19,7 +19,8 @@ import NMOS
 import NMOSClient
 import NMOSDiscovery
 
-// Follows a registry, named or found by DNS-SD, printing what it holds as that changes.
+// Follows a registry, named or found by DNS-SD, or with --peers the nodes advertising
+// themselves where there is no registry, printing what it holds as that changes.
 func queryAPI() async -> URL? {
   if CommandLine.arguments.count > 1 { return URL(string: CommandLine.arguments[1]) }
   let locator = NMOSRegistryLocator(discovery: NMOSOcaServiceDiscovery())
@@ -29,11 +30,19 @@ func queryAPI() async -> URL? {
   return nil
 }
 
+func snapshots() async -> AsyncStream<NMOSRegistrySnapshot>? {
+  if CommandLine.arguments.dropFirst().first == "--peers" {
+    print("following peers")
+    return NMOSPeerMirror(discovery: NMOSOcaServiceDiscovery()).snapshots()
+  }
+  guard let url = await queryAPI() else { return nil }
+  print("following \(url)")
+  return NMOSRegistryMirror(client: NMOSQueryClient(baseURL: url)).snapshots()
+}
+
 setvbuf(stdout, nil, _IOLBF, 0)
-guard let url = await queryAPI() else { exit(1) }
-print("following \(url)")
-let mirror = NMOSRegistryMirror(client: NMOSQueryClient(baseURL: url))
-for await snapshot in mirror.snapshots() {
+guard let snapshots = await snapshots() else { exit(1) }
+for await snapshot in snapshots {
   print(
     "nodes \(snapshot.nodes.count)",
     "devices \(snapshot.devices.count)",

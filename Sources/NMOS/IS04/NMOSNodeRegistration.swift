@@ -451,11 +451,6 @@ actor NMOSNodeRegistration {
 
   // MARK: Peer-to-peer operation
 
-  private static let counterNames: [(NMOSResourceKind, String)] = [
-    (.node, "ver_slf"), (.source, "ver_src"), (.flow, "ver_flw"),
-    (.device, "ver_dvc"), (.sender, "ver_snd"), (.receiver, "ver_rcv"),
-  ]
-
   /// The service instance name: the node's label, so that a renamed device is found
   /// under its new name, cut to the 63 bytes of UTF-8 a DNS-SD label can hold without
   /// splitting a character. Nil for an empty label leaves the name to the responder.
@@ -484,8 +479,8 @@ actor NMOSNodeRegistration {
       "api_ver": node.api.versions.map(\.description).joined(separator: ","),
       "api_auth": endpoint.authorization == true ? "true" : "false",
     ]
-    for (kind, name) in Self.counterNames {
-      txt[name] = String(counters[kind] ?? 0)
+    for kind in NMOSResourceKind.allCases {
+      txt[kind.counterName] = String(counters[kind] ?? 0)
     }
     let wanted = NMOSServiceAdvertisement(
       type: NMOSServiceType.node, name: Self.instanceName(node.label), port: port, txt: txt
