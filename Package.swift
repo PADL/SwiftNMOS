@@ -10,6 +10,8 @@ let package = Package(
   ],
   products: [
     .library(name: "NMOS", targets: ["NMOS"]),
+    .library(name: "NMOSClient", targets: ["NMOSClient"]),
+    .library(name: "NMOSDiscovery", targets: ["NMOSDiscovery"]),
     .library(name: "NMOSOCABridge", targets: ["NMOSOCABridge"]),
   ],
   dependencies: [
@@ -29,11 +31,30 @@ let package = Package(
         .product(name: "Crypto", package: "swift-crypto"),
       ]
     ),
+    // DNS-SD for NMOS services, through SwiftOCA's dns_sd wrapper
+    .target(
+      name: "NMOSDiscovery",
+      dependencies: [
+        "NMOS",
+        .product(name: "SwiftOCA", package: "SwiftOCA"),
+        .product(name: "SwiftOCADevice", package: "SwiftOCA"),
+      ]
+    ),
+    // a controller's view of NMOS: the IS-04 Query API and IS-05
+    .target(
+      name: "NMOSClient",
+      dependencies: [
+        "NMOS",
+        .product(name: "FlyingFox", package: "FlyingFox"),
+        .product(name: "Logging", package: "swift-log"),
+      ]
+    ),
     // presents a SwiftOCADevice object model through the NMOS target
     .target(
       name: "NMOSOCABridge",
       dependencies: [
         "NMOS",
+        "NMOSDiscovery",
         .product(name: "SwiftOCA", package: "SwiftOCA"),
         .product(name: "SwiftOCADevice", package: "SwiftOCA"),
         .product(name: "FlyingFox", package: "FlyingFox"),
@@ -52,6 +73,25 @@ let package = Package(
         .product(name: "Logging", package: "swift-log"),
       ],
       path: "Examples/NMOSDevice"
+    ),
+    // what a registry holds, followed from the command line
+    .executableTarget(
+      name: "NMOSQueryTool",
+      dependencies: ["NMOS", "NMOSClient", "NMOSDiscovery"],
+      path: "Examples/NMOSQueryTool"
+    ),
+    .testTarget(
+      name: "NMOSClientTests",
+      dependencies: ["NMOS", "NMOSClient", .product(name: "FlyingFox", package: "FlyingFox")]
+    ),
+    .testTarget(
+      name: "NMOSDiscoveryTests",
+      dependencies: [
+        "NMOS",
+        "NMOSDiscovery",
+        .product(name: "SwiftOCA", package: "SwiftOCA"),
+        .product(name: "SwiftOCADevice", package: "SwiftOCA"),
+      ]
     ),
     .testTarget(
       name: "NMOSTests",

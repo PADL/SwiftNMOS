@@ -16,7 +16,7 @@
 
 import Foundation
 import NMOS
-@testable import NMOSOCABridge
+@testable import NMOSDiscovery
 import XCTest
 
 final class NMOSOcaSearchDomainsTests: XCTestCase {
