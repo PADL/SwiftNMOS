@@ -78,10 +78,23 @@ public struct NMOSConnectionClient: Sendable {
     "requested_time": .null,
   ]
 
-  /// Has a receiver take `sender`, described by `sdp`, now.
-  public func connect(receiver id: NMOSID, sender: NMOSID, sdp: String) async throws {
+  /// The SDP a receiver has active, or nil if it's receiving nothing.
+  public func activeTransportFile(receiver id: NMOSID) async throws -> String? {
+    let url = receiver(id).appending(path: "active")
+    let response = try await http.send(.GET, url, body: nil)
+    guard response.status == 200 else {
+      throw NMOSClientError.status(response.status, url.absoluteString)
+    }
+    let active = try JSONDecoder().decode(NMOSJSONValue.self, from: response.body)
+    guard active.objectValue?["master_enable"]?.boolValue == true else { return nil }
+    return active.objectValue?["transport_file"]?.objectValue?["data"]?.stringValue
+  }
+
+  /// Has a receiver take the stream `sdp` describes, now. `sender` is its NMOS sender, if it has
+  /// one: a stream from outside NMOS has none.
+  public func connect(receiver id: NMOSID, sender: NMOSID? = nil, sdp: String) async throws {
     try await stage(id, [
-      "sender_id": .string(sender.description),
+      "sender_id": sender.map { .string($0.description) } ?? .null,
       "master_enable": .bool(true),
       "activation": Self.activateNow,
       "transport_file": ["data": .string(sdp), "type": .string(Self.sdpType)],

@@ -130,6 +130,49 @@ final class NMOSClientTests: XCTestCase {
     XCTAssertEqual(activation?["mode"] as? String, "activate_immediate")
   }
 
+  func testAStreamFromOutsideNMOSHasNoSender() async throws {
+    let http = FakeHTTP()
+    let id = try JSONDecoder().decode(NMOSID.self, from: Data("\"\(first)\"".utf8))
+    let api = URL(string: "http://node/x-nmos/connection/v1.1")!
+    http.responses["http://node/x-nmos/connection/v1.1/single/receivers/\(first)/staged"] =
+      NMOSHTTPClientResponse(status: 200)
+    try await NMOSConnectionClient(apiURL: api, http: http).connect(receiver: id, sdp: "v=0")
+    let body = try JSONSerialization.jsonObject(
+      with: XCTUnwrap(http.requests.first?.2)
+    ) as? [String: Any]
+    XCTAssertTrue(body?["sender_id"] is NSNull)
+  }
+
+  func testDisconnectingClearsTheTransportFile() async throws {
+    let http = FakeHTTP()
+    let id = try JSONDecoder().decode(NMOSID.self, from: Data("\"\(first)\"".utf8))
+    let api = URL(string: "http://node/x-nmos/connection/v1.1")!
+    http.responses["http://node/x-nmos/connection/v1.1/single/receivers/\(first)/staged"] =
+      NMOSHTTPClientResponse(status: 200)
+    try await NMOSConnectionClient(apiURL: api, http: http).disconnect(receiver: id)
+    let body = try JSONSerialization.jsonObject(
+      with: XCTUnwrap(http.requests.first?.2)
+    ) as? [String: Any]
+    XCTAssertEqual(body?["master_enable"] as? Bool, false)
+    XCTAssertTrue((body?["transport_file"] as? [String: Any])?["data"] is NSNull)
+  }
+
+  func testAReceiverNotEnabledHasNoActiveStream() async throws {
+    let http = FakeHTTP()
+    let id = try JSONDecoder().decode(NMOSID.self, from: Data("\"\(first)\"".utf8))
+    let url = "http://node/x-nmos/connection/v1.1/single/receivers/\(first)/active"
+    http.responses[url] = NMOSHTTPClientResponse(
+      status: 200,
+      body: Data(#"{"master_enable":false,"transport_file":{"data":"v=0"}}"#.utf8)
+    )
+    let client = NMOSConnectionClient(
+      apiURL: URL(string: "http://node/x-nmos/connection/v1.1")!,
+      http: http
+    )
+    let active = try await client.activeTransportFile(receiver: id)
+    XCTAssertNil(active)
+  }
+
   func testRegistriesAreChosenByPriority() {
     func service(_ name: String, pri: String, ver: String = "v1.2,v1.3") -> NMOSDiscoveredService {
       NMOSDiscoveredService(
