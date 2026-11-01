@@ -15,6 +15,10 @@
 //
 
 import Foundation
+#if canImport(Glibc)
+// Swift 6 otherwise takes `stdout`, a mutable global there, not to be safe to read
+@preconcurrency import Glibc
+#endif
 import NMOS
 import NMOSClient
 import NMOSDiscovery
