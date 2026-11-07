@@ -132,7 +132,8 @@ private final class SDPApplication: SwiftOCADevice.OcaMediaTransportApplication,
   func configureEndpointFromSDP(
     endpointID id: OcaMediaStreamEndpointID,
     sdpString: OcaSDPString,
-    streamID: OcaUint32,
+    mediaIDType: Aes67MediaIDType,
+    mediaID: OcaString,
     from controller: any OcaController
   ) async throws {
     active[id] = sdpString
@@ -161,7 +162,7 @@ extension NMOSOcaResourceDescriptionTests {
 
     // a controller patches the receiver through the application, which shows only in its status
     try await application.configureEndpointFromSDP(
-      endpointID: 1, sdpString: TestTransports.stream, streamID: 0, from: TestController()
+      endpointID: 1, sdpString: TestTransports.stream, mediaIDType: .none, mediaID: "", from: TestController()
     )
     try await waitFor("the receiver is active") {
       await store.receivers.first { $0.id == receiverID }?.subscription.active == true

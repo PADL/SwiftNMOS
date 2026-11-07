@@ -28,13 +28,14 @@ public protocol MediaStreamEndpointSDPRepresentable: SwiftOCADevice.OcaMediaTran
   /// no stream.
   func getActiveSDP(_ id: OcaMediaStreamEndpointID) async throws -> OcaSDPString
 
-  /// Subscribes an input endpoint to the stream the description and stream ID, an SDP
-  /// `<ssrc-id>`, select (see `MediaStreamSDP.selectStream`); an empty description clears
-  /// the subscription.
+  /// Subscribes an input endpoint to the media description of the description that
+  /// `mediaIDType` and `mediaID` select (AES70-21 §10.2.4, `MediaStreamSDP.selectStream`);
+  /// an empty description clears the subscription.
   func configureEndpointFromSDP(
     endpointID: OcaMediaStreamEndpointID,
     sdpString: OcaSDPString,
-    streamID: OcaUint32,
+    mediaIDType: Aes67MediaIDType,
+    mediaID: OcaString,
     from controller: any OcaController
   ) async throws
 

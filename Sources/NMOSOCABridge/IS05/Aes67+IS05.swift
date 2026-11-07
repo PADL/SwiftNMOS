@@ -54,6 +54,14 @@ extension NMOSOcaRTPAdaptation {
   }
 
   private func activeSDP(of endpoint: NMOSOcaEndpoint) async -> MediaStreamSDP? {
+    // the media description AdaptationData.MediaID names, else the first one that parses
+    if let data = adaptationData(of: endpoint), data.mediaIDType != .none,
+       let text = try? MediaStreamSDP.selectStream(
+         in: data.activeSDP, mediaIDType: data.mediaIDType, mediaID: data.mediaID
+       )
+    {
+      return MediaStreamSDP(sdpString: text)
+    }
     let text = await activeSDPString(of: endpoint)
     return MediaStreamSDP.streams(in: text).lazy.compactMap { MediaStreamSDP(sdpString: $0) }.first
   }
@@ -117,13 +125,14 @@ extension NMOSOcaRTPAdaptation {
 
   // MARK: Transport files
 
-  /// The stream of a transport file a single-legged receiver takes: the first one.
-  private func stream(of file: NMOSTransportFile) throws -> (text: OcaSDPString, sdp: MediaStreamSDP) {
+  /// The stream of a transport file a single-legged receiver takes: the first one that
+  /// parses, with its index among the file's media descriptions.
+  private func stream(of file: NMOSTransportFile) throws -> (text: OcaSDPString, sdp: MediaStreamSDP, index: Int) {
     guard file.type == nil || file.type == NMOSTransportFile.sdpType, let data = file.data else {
       throw NMOSConnectionError.invalid("An RTP receiver's transport file must be `application/sdp`")
     }
-    for text in MediaStreamSDP.streams(in: data) {
-      if let sdp = MediaStreamSDP(sdpString: text) { return (text, sdp) }
+    for (index, text) in MediaStreamSDP.streams(in: data).enumerated() {
+      if let sdp = MediaStreamSDP(sdpString: text) { return (text, sdp, index) }
     }
     throw NMOSConnectionError.invalid("The transport file does not describe a linear PCM audio stream")
   }
@@ -142,11 +151,17 @@ extension NMOSOcaRTPAdaptation {
 
   public func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
     guard staged.masterEnable else {
-      return try await configure(endpoint, sdpString: "", streamID: 0)
+      return try await configure(endpoint, Selection(sdpString: ""))
     }
     let parameters = staged.transportParameters.first ?? [:]
-    let (text, streamID) = try await description(for: endpoint, staged: staged, parameters)
-    try await configure(endpoint, sdpString: text, streamID: streamID)
+    try await configure(endpoint, description(for: endpoint, staged: staged, parameters))
+  }
+
+  /// A ConfigureEndpointFromSDP call's description and the media description it selects.
+  private struct Selection {
+    var sdpString: OcaSDPString
+    var mediaIDType = Aes67MediaIDType.none
+    var mediaID: OcaString = ""
   }
 
   /// The description to subscribe with. A staged transport file is passed through
@@ -155,10 +170,12 @@ extension NMOSOcaRTPAdaptation {
     for endpoint: NMOSOcaEndpoint,
     staged: NMOSConnectionState,
     _ parameters: NMOSTransportParameters
-  ) async throws -> (OcaSDPString, OcaUint32) {
-    var original: (text: OcaSDPString, sdp: MediaStreamSDP)?
+  ) async throws -> Selection {
+    var original: (text: OcaSDPString, sdp: MediaStreamSDP, index: Int)?
+    var fileText: OcaSDPString?
     if let file = staged.transportFile, file.data != nil {
       original = try stream(of: file)
+      fileText = file.data
     }
     // without a file, the stream it already receives or its stream mode says what to expect
     var sdp: MediaStreamSDP
@@ -187,15 +204,24 @@ extension NMOSOcaRTPAdaptation {
     sdp.sourceAddress = parameters["source_ip"]?.nonEmptyString
     sdp.direction = .receiveOnly
 
-    if let original, original.sdp.destinationAddress == sdp.destinationAddress,
+    if let original, let fileText, original.sdp.destinationAddress == sdp.destinationAddress,
        original.sdp.destinationPort == sdp.destinationPort, original.sdp.sourceAddress == sdp.sourceAddress
     {
-      // nothing the parameters say differs from the file, so the device gets the file;
-      // its one stream is named by <ssrc-id> if it has one (AES70-21 Table 18)
-      return (original.text, MediaStreamSDP.ssrcIDs(in: original.text).first ?? 0)
+      // nothing the parameters say differs from the file, so the device gets the file
+      return Self.selection(of: original.index, in: fileText)
     }
-    // a rendered description has a single stream and no <ssrc-id>
-    return (sdp.sdpString, 0)
+    // a rendered description has a single media description
+    return Selection(sdpString: sdp.sdpString)
+  }
+
+  /// The file and the media description at `index` (AES70-21 §10.2.4): None for a file of
+  /// one, else its `a=mid` if it has one, else its position.
+  private static func selection(of index: Int, in text: OcaSDPString) -> Selection {
+    guard MediaStreamSDP.streams(in: text).count > 1 else { return Selection(sdpString: text) }
+    if let mid = MediaStreamSDP.mediaID(.mid, ofStreamAt: index, in: text) {
+      return Selection(sdpString: text, mediaIDType: .mid, mediaID: mid)
+    }
+    return Selection(sdpString: text, mediaIDType: .ordinal, mediaID: String(index + 1))
   }
 
   /// A description in the endpoint's current stream mode, for a receiver that is given
@@ -220,17 +246,25 @@ extension NMOSOcaRTPAdaptation {
     )
   }
 
-  private func configure(_ endpoint: NMOSOcaEndpoint, sdpString: OcaSDPString, streamID: OcaUint32) async throws {
+  private func configure(_ endpoint: NMOSOcaEndpoint, _ selection: Selection) async throws {
     let id = endpoint.endpoint.idInternal
     do {
       switch endpoint.application {
       case let application as any MediaStreamEndpointSDPRepresentable:
         try await application.configureEndpointFromSDP(
-          endpointID: id, sdpString: sdpString, streamID: streamID, from: NMOSOcaControlController.connection
+          endpointID: id,
+          sdpString: selection.sdpString,
+          mediaIDType: selection.mediaIDType,
+          mediaID: selection.mediaID,
+          from: NMOSOcaControlController.connection
         )
       case let application as SwiftOCADevice.Aes67OcaMediaTransportApplication:
         try await application.configureEndpointFromSDP(
-          endpointID: id, sdpString: sdpString, streamID: streamID, from: NMOSOcaControlController.connection
+          endpointID: id,
+          sdpString: selection.sdpString,
+          mediaIDType: selection.mediaIDType,
+          mediaID: selection.mediaID,
+          from: NMOSOcaControlController.connection
         )
       default:
         throw NMOSConnectionError.failed("The endpoint's application takes no session description")

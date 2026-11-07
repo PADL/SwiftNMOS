@@ -60,18 +60,29 @@ final class MockAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
   override func configureEndpointFromSDP(
     endpointID id: OcaMediaStreamEndpointID,
     sdpString: OcaSDPString,
-    streamID: OcaUint32,
+    mediaIDType: Aes67MediaIDType,
+    mediaID: OcaString,
     from controller: any OcaController
   ) async throws {
-    try setActiveSDP(sdpString, endpoint: id)
+    if !sdpString.isEmpty {
+      _ = try MediaStreamSDP.selectStream(in: sdpString, mediaIDType: mediaIDType, mediaID: mediaID)
+    }
+    try setActiveSDP(sdpString, endpoint: id, mediaIDType: mediaIDType, mediaID: mediaID)
   }
 
   /// What a device does once a stream is set up: the endpoint reports its description.
-  private func setActiveSDP(_ sdp: OcaSDPString, endpoint id: OcaMediaStreamEndpointID) throws {
+  private func setActiveSDP(
+    _ sdp: OcaSDPString,
+    endpoint id: OcaMediaStreamEndpointID,
+    mediaIDType: Aes67MediaIDType = .none,
+    mediaID: OcaString = ""
+  ) throws {
     var endpoint = try endpoint(id)
     var data = (try? endpoint.adaptationData.decode(Aes67EndpointAdaptationData.self))
       ?? Aes67EndpointAdaptationData()
     data.activeSDP = sdp
+    data.mediaIDType = mediaIDType
+    data.mediaID = mediaID
     endpoint.adaptationData = try data.blob
     try update(endpoint: endpoint)
   }
