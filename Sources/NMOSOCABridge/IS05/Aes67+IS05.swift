@@ -58,9 +58,10 @@ extension NMOSOcaRTPAdaptation {
     if let data = adaptationData(of: endpoint), data.mediaIDType != .none,
        let text = try? MediaStreamSDP.selectStream(
          in: data.activeSDP, mediaIDType: data.mediaIDType, mediaID: data.mediaID
-       )
+       ),
+       let named = MediaStreamSDP(sdpString: text)
     {
-      return MediaStreamSDP(sdpString: text)
+      return named
     }
     let text = await activeSDPString(of: endpoint)
     return MediaStreamSDP.streams(in: text).lazy.compactMap { MediaStreamSDP(sdpString: $0) }.first
@@ -126,13 +127,13 @@ extension NMOSOcaRTPAdaptation {
   // MARK: Transport files
 
   /// The stream of a transport file a single-legged receiver takes: the first one that
-  /// parses, with its index among the file's media descriptions.
-  private func stream(of file: NMOSTransportFile) throws -> (text: OcaSDPString, sdp: MediaStreamSDP, index: Int) {
+  /// parses, with the file's text and the stream's index among its media descriptions.
+  private func stream(of file: NMOSTransportFile) throws -> (file: OcaSDPString, sdp: MediaStreamSDP, index: Int) {
     guard file.type == nil || file.type == NMOSTransportFile.sdpType, let data = file.data else {
       throw NMOSConnectionError.invalid("An RTP receiver's transport file must be `application/sdp`")
     }
     for (index, text) in MediaStreamSDP.streams(in: data).enumerated() {
-      if let sdp = MediaStreamSDP(sdpString: text) { return (text, sdp, index) }
+      if let sdp = MediaStreamSDP(sdpString: text) { return (data, sdp, index) }
     }
     throw NMOSConnectionError.invalid("The transport file does not describe a linear PCM audio stream")
   }
@@ -171,11 +172,9 @@ extension NMOSOcaRTPAdaptation {
     staged: NMOSConnectionState,
     _ parameters: NMOSTransportParameters
   ) async throws -> Selection {
-    var original: (text: OcaSDPString, sdp: MediaStreamSDP, index: Int)?
-    var fileText: OcaSDPString?
+    var original: (file: OcaSDPString, sdp: MediaStreamSDP, index: Int)?
     if let file = staged.transportFile, file.data != nil {
       original = try stream(of: file)
-      fileText = file.data
     }
     // without a file, the stream it already receives or its stream mode says what to expect
     var sdp: MediaStreamSDP
@@ -204,24 +203,28 @@ extension NMOSOcaRTPAdaptation {
     sdp.sourceAddress = parameters["source_ip"]?.nonEmptyString
     sdp.direction = .receiveOnly
 
-    if let original, let fileText, original.sdp.destinationAddress == sdp.destinationAddress,
+    if let original, original.sdp.destinationAddress == sdp.destinationAddress,
        original.sdp.destinationPort == sdp.destinationPort, original.sdp.sourceAddress == sdp.sourceAddress
     {
       // nothing the parameters say differs from the file, so the device gets the file
-      return Self.selection(of: original.index, in: fileText)
+      return Self.selection(of: original.index, in: original.file)
     }
     // a rendered description has a single media description
     return Selection(sdpString: sdp.sdpString)
   }
 
   /// The file and the media description at `index` (AES70-21 §10.2.4): None for a file of
-  /// one, else its `a=mid` if it has one, else its position.
+  /// one, else its `a=mid` if no other description has it, else its position.
   private static func selection(of index: Int, in text: OcaSDPString) -> Selection {
-    guard MediaStreamSDP.streams(in: text).count > 1 else { return Selection(sdpString: text) }
-    if let mid = MediaStreamSDP.mediaID(.mid, ofStreamAt: index, in: text) {
+    let streams = MediaStreamSDP.streams(in: text)
+    guard streams.count > 1 else { return Selection(sdpString: text) }
+    if let mid = MediaStreamSDP.mediaID(.mid, ofStreamAt: index, in: text),
+       (try? MediaStreamSDP.selectStream(in: text, mediaIDType: .mid, mediaID: mid)) == streams[index]
+    {
       return Selection(sdpString: text, mediaIDType: .mid, mediaID: mid)
     }
-    return Selection(sdpString: text, mediaIDType: .ordinal, mediaID: String(index + 1))
+    let ordinal = MediaStreamSDP.mediaID(.ordinal, ofStreamAt: index, in: text) ?? String(index + 1)
+    return Selection(sdpString: text, mediaIDType: .ordinal, mediaID: ordinal)
   }
 
   /// A description in the endpoint's current stream mode, for a receiver that is given
