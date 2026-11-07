@@ -64,9 +64,9 @@ final class MockAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
     mediaID: OcaString,
     from controller: any OcaController
   ) async throws {
-    if !sdpString.isEmpty {
-      _ = try MediaStreamSDP.selectStream(in: sdpString, mediaIDType: mediaIDType, mediaID: mediaID)
-    }
+    // an empty description closes the connection and selects nothing
+    guard !sdpString.isEmpty else { return try setActiveSDP("", endpoint: id) }
+    _ = try MediaStreamSDP.selectStream(in: sdpString, mediaIDType: mediaIDType, mediaID: mediaID)
     try setActiveSDP(sdpString, endpoint: id, mediaIDType: mediaIDType, mediaID: mediaID)
   }
 

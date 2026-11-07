@@ -42,15 +42,22 @@ final class TestAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
   ) async throws {
     if let refusal { throw Ocp1Error.status(refusal) }
     configured.append((id, sdpString, mediaIDType, mediaID))
-    try setActiveSDP(sdpString, endpoint: id)
+    try setActiveSDP(sdpString, endpoint: id, mediaIDType: mediaIDType, mediaID: mediaID)
   }
 
   /// What the device would do on being patched by another controller.
-  func setActiveSDP(_ sdp: OcaSDPString, endpoint id: OcaMediaStreamEndpointID) throws {
+  func setActiveSDP(
+    _ sdp: OcaSDPString,
+    endpoint id: OcaMediaStreamEndpointID,
+    mediaIDType: Aes67MediaIDType = .none,
+    mediaID: OcaString = ""
+  ) throws {
     var endpoint = try endpoint(id)
     var data = (try? endpoint.adaptationData.decode(Aes67EndpointAdaptationData.self))
       ?? Aes67EndpointAdaptationData()
     data.activeSDP = sdp
+    data.mediaIDType = mediaIDType
+    data.mediaID = mediaID
     endpoint.adaptationData = try data.blob
     try update(endpoint: endpoint)
   }
@@ -218,6 +225,34 @@ final class RTPConnectionTests: XCTestCase {
     XCTAssertEqual(application.configured.first?.sdp, file)
     XCTAssertEqual(application.configured.first?.mediaIDType, .mid)
     XCTAssertEqual(application.configured.first?.mediaID, "primary")
+  }
+
+  @OcaDevice
+  func testADuplicatedMidIsPassedOverForThePosition() async throws {
+    let application = try await makeApplication()
+    let stack = try await ConnectionStack([application])
+    let leg = Self.sourceSpecific.components(separatedBy: "m=audio")
+    let file = leg[0] + "m=audio" + leg[1] + "a=mid:1\r\n" + "m=audio" + leg[1] + "a=mid:1\r\n"
+    let result = try await stack.send(.PATCH, "receivers/\(stack.id(application, 1))/staged", [
+      "master_enable": true, "activation": ["mode": "activate_immediate"],
+      "transport_file": ["data": .string(file), "type": "application/sdp"],
+    ])
+    XCTAssertEqual(result.status, .ok)
+    XCTAssertEqual(application.configured.first?.mediaIDType, .ordinal)
+    XCTAssertEqual(application.configured.first?.mediaID, "1")
+  }
+
+  @OcaDevice
+  func testTheActiveStreamIsTheOneAdaptationDataNames() async throws {
+    let application = try await makeApplication()
+    let stack = try await ConnectionStack([application])
+    let leg = Self.sourceSpecific.components(separatedBy: "m=audio")
+    let second = leg[1].replacingOccurrences(of: "232.21.21.133", with: "232.21.21.134")
+    let pair = leg[0] + "m=audio" + leg[1] + "a=mid:p\r\n" + "m=audio" + second + "a=mid:s\r\n"
+    // another controller selects the second leg
+    try application.setActiveSDP(pair, endpoint: 1, mediaIDType: .mid, mediaID: "s")
+    let active = try await stack.send(.GET, "receivers/\(stack.id(application, 1))/active")
+    XCTAssertEqual(active.json?["transport_params"]?.arrayValue?.first?["multicast_ip"], "232.21.21.134")
   }
 
   @OcaDevice
