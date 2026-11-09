@@ -335,7 +335,7 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
       await bridge.describe()
       await described.append(store.senders)
     }
-    let native = "ieee1722/001122fffe334455/0006/2"
+    let native = "ieee1722:001122fffe334455:2"
     let senderID = NMOSOcaResourceIDs.id(.sender, native: native)
     for senders in described {
       let sender = try XCTUnwrap(senders.first { $0.id == senderID })

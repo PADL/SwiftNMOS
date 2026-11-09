@@ -94,6 +94,7 @@ final class DanteConnectionTests: XCTestCase {
   func testRenamingTheDeviceMakesATransmitChannelANewSender() async throws {
     let (application, stack) = try await makeStack()
     let sender = await stack.id(application, 1001)
+    XCTAssertEqual(sender, ConnectionStack.ids.id(.sender, deviceNative: "dante:Left@MonitorTwo-0A1B"))
     let signals = Mutex(0)
     let changes = stack.bridge.connectionProvider.connectionChanges()
     let task = Task {
@@ -117,6 +118,7 @@ final class DanteConnectionTests: XCTestCase {
     XCTAssertGreaterThan(count(), before)
     let renamed = await stack.id(application, 1001)
     XCTAssertNotEqual(renamed, sender)
+    XCTAssertEqual(renamed, ConnectionStack.ids.id(.sender, deviceNative: "dante:Left@MonitorTwo-Renamed"))
     let gone = try await stack.send(.GET, "senders/\(sender)/active")
     XCTAssertEqual(gone.status, .notFound)
     let active = try await stack.send(.GET, "senders/\(renamed)/active")

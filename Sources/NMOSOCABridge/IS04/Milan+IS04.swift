@@ -20,24 +20,17 @@ import SwiftOCA
 import SwiftOCADevice
 
 extension NMOSOcaMilanAdaptation {
-  /// The STREAM_INPUT and STREAM_OUTPUT descriptor types (IEEE 1722.1-2021 Table 7-1).
-  private static let streamInput: UInt16 = 0x0005
-  private static let streamOutput: UInt16 = 0x0006
-
-  /// A stream is named by its entity ID, descriptor type and descriptor index, which
-  /// together are unique to it and which the entity keeps for its life.
+  /// A stream is named `ieee1722:<entity ID>:<unique ID>`: the entity ID as 16 lowercase
+  /// hex digits, and the stream's ACMP talker or listener unique ID, which is its
+  /// STREAM_OUTPUT or STREAM_INPUT index (IEEE 1722.1-2021 Clause 8.2.1).
+  /// The resource kind tells a talker from a listener of the same index.
   public func nativeIdentity(of endpoint: NMOSOcaEndpoint) async -> String? {
     guard let own = try? endpoint.endpoint.idExternal.decode(MilanMediaStreamEndpointIDExternal.self)
     else { return nil }
     let application = try? endpoint.application.adaptationData.decode(MilanMediaTransportAdaptationData.self)
     let entity = own.entityID != 0 ? own.entityID : application?.entityID ?? 0
     guard entity != 0 else { return nil }
-    let type = endpoint.isSender ? Self.streamOutput : Self.streamInput
-    return "ieee1722/\(Self.hex(entity, digits: 16))/\(Self.hex(type, digits: 4))/\(own.streamIndex)"
-  }
-
-  private static func hex(_ value: some BinaryInteger, digits: Int) -> String {
-    let text = String(value, radix: 16)
-    return String(repeating: "0", count: max(0, digits - text.count)) + text
+    let hex = String(entity, radix: 16)
+    return "ieee1722:\(String(repeating: "0", count: 16 - hex.count) + hex):\(own.streamIndex)"
   }
 }

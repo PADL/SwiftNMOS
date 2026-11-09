@@ -67,11 +67,27 @@ final class NMOSOcaResourceIDsTests: XCTestCase {
   func testEachResourceOfANativeEndpointHasItsOwnID() {
     var seen = Set<NMOSID>()
     for kind in [NMOSResourceKind.source, .flow, .sender, .receiver] {
-      for native in ["ieee1722/001122fffe334455/0006/0", "ieee1722/001122fffe334455/0006/1", "dante/Stage/Left"] {
+      for native in ["ieee1722:001122fffe334455:0", "ieee1722:001122fffe334455:1"] {
         let id = NMOSOcaResourceIDs.id(kind, native: native)
         XCTAssertTrue(seen.insert(id).inserted, "\(kind) \(native)")
         XCTAssertEqual(id.description.split(separator: "-")[2].first, "5")
       }
     }
+  }
+
+  /// A Dante name is unique only within its network, so two devices with the same
+  /// device name (two bridges left with the default one) give different IDs, and a
+  /// name never gives the ID an IEEE 1722 name or a seeded endpoint does.
+  func testADanteNameIsQualifiedByTheDevice() {
+    let first = NMOSOcaResourceIDs(seed: "00-22-97-01-02-03")
+    let second = NMOSOcaResourceIDs(seed: "00-22-97-0A-0B-0C")
+    for kind in [NMOSResourceKind.source, .flow, .sender, .receiver] {
+      let native = "dante:Left@RouterOne"
+      XCTAssertEqual(first.id(kind, deviceNative: native), first.id(kind, deviceNative: native))
+      XCTAssertNotEqual(first.id(kind, deviceNative: native), second.id(kind, deviceNative: native))
+      XCTAssertNotEqual(first.id(kind, deviceNative: native), NMOSOcaResourceIDs.id(kind, native: native))
+      XCTAssertNotEqual(first.id(kind, deviceNative: native), first.id(kind, application: 1, endpoint: 1))
+    }
+    XCTAssertNotEqual(first.id(.sender, deviceNative: "dante:Left@RouterOne"), first.id(.receiver, deviceNative: "dante:Left@RouterOne"))
   }
 }

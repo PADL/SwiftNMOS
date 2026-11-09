@@ -19,13 +19,17 @@ import NMOS
 import SwiftOCADevice
 
 extension NMOSOcaDanteAdaptation {
-  /// A Dante channel is named by its device's name and its own, as a subscription names
-  /// it. AES70-23 gives no ID of the device that outlives a rename, so renaming the device
-  /// or the channel makes its resources new ones.
+  /// A Dante channel is named `dante:<channel>@<device>`, Dante's own notation for a
+  /// channel on a device. AES70-23 gives no device ID that outlives a rename, so a rename
+  /// makes the resources new ones.
   public func nativeIdentity(of endpoint: NMOSOcaEndpoint) async -> String? {
     let device = await endpoint.application.deviceDelegate?.deviceManager?.deviceName ?? ""
     let channel = channelName(of: endpoint)
     guard !device.isEmpty, !channel.isEmpty else { return nil }
-    return "dante/\(device)/\(channel)"
+    return "dante:\(channel)@\(device)"
   }
+
+  /// A Dante device name is unique only within its Dante network, and two bridges on two
+  /// networks may both have the default name, so the IDs are qualified by the device.
+  public var nativeScope: NMOSOcaNativeScope { .device }
 }

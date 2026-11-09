@@ -39,6 +39,9 @@ public protocol NMOSOcaTransportAdaptation: Sendable {
   /// node instead. Changing it changes the resources, as IS-04 requires of a new endpoint.
   func nativeIdentity(of endpoint: NMOSOcaEndpoint) async -> String?
 
+  /// Where the native name is unique, and so which namespace its IDs are derived in.
+  var nativeScope: NMOSOcaNativeScope { get }
+
   /// The transport URN, with its subclassification where it has one, such as
   /// `urn:x-nmos:transport:rtp.mcast`.
   func transport(of endpoint: NMOSOcaEndpoint) async -> String
@@ -79,9 +82,11 @@ public extension NMOSOcaTransportAdaptation {
   /// An endpoint of a transport that gives it no name of its own is named by the node.
   func nativeIdentity(of endpoint: NMOSOcaEndpoint) async -> String? { nil }
 
+  var nativeScope: NMOSOcaNativeScope { .universal }
+
   /// The ID of the source, flow, sender or receiver that stands for the endpoint.
   func id(_ kind: NMOSResourceKind, of endpoint: NMOSOcaEndpoint, in ids: NMOSOcaResourceIDs) async -> NMOSID {
-    await ids.id(kind, of: endpoint, native: nativeIdentity(of: endpoint))
+    await ids.id(kind, of: endpoint, native: nativeIdentity(of: endpoint), scope: nativeScope)
   }
 
   /// The transport URN with any subclassification removed, as IS-05 `/transporttype`
