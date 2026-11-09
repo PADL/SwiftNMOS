@@ -17,19 +17,36 @@ An [AMWA NMOS](https://specs.amwa.tv/nmos/) node in Swift, and a bridge that pre
 - **`NMOSOCABridge`** maps a SwiftOCADevice device onto `NMOS`. One `NMOSOcaBridge`
   describes the device as IS-04 resources from its media transport applications, and
   from that description serves IS-05 through one adaptation per transport (RTP by SDP,
-  Dante by channel subscription, Milan by stream binding) and IS-12 by presenting every
+  Dante by channel subscription, IEEE 1722 by stream binding) and IS-12 by presenting every
   AES70 object as an MS-05-02 object, with native NMOS classes where one applies. See
   [`Sources/NMOSOCABridge/IS12/README.md`](Sources/NMOSOCABridge/IS12/README.md).
 
 The specifications followed are IS-04 v1.3, IS-05 v1.1 and v1.2, IS-12 v1.0 and
 MS-05-02 v1.0.
 
+## Transports
+
+Dante and IEEE 1722 are not in AMWA's register of transports, and `urn:x-nmos:` is AMWA's
+namespace, so they are named in PADL's. IS-05 serves them from v1.2. Neither has a
+transport file: a receiver is patched by staging its `transport_params`.
+
+| Transport | URN | Parameters | Schemas |
+|-----------|-----|------------|---------|
+| RTP (AES67, and Dante carried as AES67) | `urn:x-nmos:transport:rtp` | IS-05's | IS-05's |
+| Dante | `urn:x-padl:transport:dante` | `device_name`, `channel_name` | [sender](schemas/sender_transport_params_dante.json), [receiver](schemas/receiver_transport_params_dante.json) |
+| IEEE 1722 | `urn:x-padl:transport:ieee1722` | `entity_id`, `stream_index` | [sender](schemas/sender_transport_params_ieee1722.json), [receiver](schemas/receiver_transport_params_ieee1722.json) |
+
+The schemas in [`schemas/`](schemas) follow IS-05's per-transport ones. An IEEE 1722
+`entity_id` is written as IEEE 1722.1 writes an EUI-64, 16 hexadecimal digits with an
+optional `0x`, not in IS-04's hyphenated form. The bridge presents a Milan entity's
+streams (AES70-22) as IEEE 1722, Milan being the profile of it the entity implements.
+
 ## Example
 
 `Examples/NMOSDevice` is an AES70 device with a mixer (a block of channel blocks, each
 with a gain and a mute), an identify actuator that logs when a controller asks the device
 to identify itself (an NcIdentBeacon over IS-12), and mock AES67 and Dante transports, served as an NMOS node. The transports move no audio, but behave as a device's would when patched,
-so IS-04, IS-05 (`urn:x-nmos:transport:rtp` and `urn:x-nmos:transport:dante`) and IS-12
+so IS-04, IS-05 (`urn:x-nmos:transport:rtp` and `urn:x-padl:transport:dante`) and IS-12
 can all be exercised. OCP.1 and OCP.2 share its HTTP port, as WebSocket subprotocols,
 and OCP.1 is also served over TCP on `--oca-port` (65000), for `ocacli -h localhost`.
 

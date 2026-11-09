@@ -102,7 +102,7 @@ final class NMOSResourcesTests: XCTestCase {
   func testRequiredMembersWithoutAValueAreWrittenAsNull() throws {
     let device = NMOSID(UUID())
     let sender = NMOSSenderResource(
-      id: NMOSID(UUID()), label: "", description: "", flowID: nil, transport: "urn:x-nmos:transport:dante",
+      id: NMOSID(UUID()), label: "", description: "", flowID: nil, transport: "urn:x-padl:transport:dante",
       deviceID: device, manifestHref: nil, interfaceBindings: [], subscription: .init(active: false)
     )
     let json = try NMOSJSONValue(encoding: sender)

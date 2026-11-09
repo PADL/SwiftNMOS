@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "description": "Describes the transport parameters of a Sender of urn:x-padl:transport:ieee1722, an IEEE 1722 talker stream (a STREAM_OUTPUT of an IEEE 1722.1 entity; Milan is the profile presented). They are the talker's identity a listener is bound to it by; the Sender reports them and they are fixed at the constraints endpoint. IEEE 1722 Senders must support all parameters in this schema.",
+  "title": "IEEE 1722 Sender Transport Parameters",
+  "type": "object",
+  "properties": {
+    "entity_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Entity ID of the talker as IEEE 1722.1 writes an EUI-64: 16 hexadecimal digits, optionally prefixed by 0x. Senders report 16 lowercase digits; a Receiver also accepts fewer digits, with leading zeros left out. A null value indicates that the Sender does not know its talker identity.",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(0x)?[0-9a-fA-F]{1,16}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "stream_index": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Index of the talker's STREAM_OUTPUT descriptor. A null value indicates that the Sender does not know its talker identity.",
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

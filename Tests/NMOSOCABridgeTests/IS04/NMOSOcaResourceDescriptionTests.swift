@@ -265,7 +265,7 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     let danteSender = try XCTUnwrap(senders.first {
       $0.id == ids.id(.sender, application: transports.dante.objectNumber, endpoint: 1001)
     })
-    XCTAssertEqual(danteSender.transport, "urn:x-nmos:transport:dante")
+    XCTAssertEqual(danteSender.transport, "urn:x-padl:transport:dante")
     XCTAssertEqual(danteSender.label, "Left")
     // a Dante transmit channel sends to whoever subscribes
     XCTAssertTrue(danteSender.subscription.active)
@@ -277,14 +277,14 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     let danteReceiver = try XCTUnwrap(receivers.first {
       $0.id == ids.id(.receiver, application: transports.dante.objectNumber, endpoint: 1)
     })
-    XCTAssertEqual(danteReceiver.transport, "urn:x-nmos:transport:dante")
+    XCTAssertEqual(danteReceiver.transport, "urn:x-padl:transport:dante")
     XCTAssertTrue(danteReceiver.subscription.active)
     XCTAssertEqual(danteReceiver.caps.mediaTypes, ["audio/L24"])
 
     let milanReceiver = try XCTUnwrap(receivers.first {
       $0.id == ids.id(.receiver, application: transports.milan.objectNumber, endpoint: 1)
     })
-    XCTAssertEqual(milanReceiver.transport, "urn:x-nmos:transport:milan")
+    XCTAssertEqual(milanReceiver.transport, "urn:x-padl:transport:ieee1722")
     XCTAssertFalse(milanReceiver.subscription.active)
 
     XCTAssertEqual(senders.count, 2)
@@ -304,7 +304,7 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
   }
 
   @OcaDevice
-  func testAMilanSenderHasNoTransportFile() async throws {
+  func testAnIEEE1722SenderHasNoTransportFile() async throws {
     let transports = try await TestTransports()
     try transports.milan.insert(endpoint: OcaMediaStreamEndpoint(
       idInternal: 1001,
@@ -319,7 +319,7 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     let sender = try XCTUnwrap(senders.first {
       $0.id == ids.id(.sender, application: transports.milan.objectNumber, endpoint: 1001)
     })
-    XCTAssertEqual(sender.transport, "urn:x-nmos:transport:milan")
+    XCTAssertEqual(sender.transport, "urn:x-padl:transport:ieee1722")
     XCTAssertNil(sender.manifestHref)
   }
 

@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "description": "Describes the transport parameters of a Sender of urn:x-padl:transport:dante, a native Dante transmit channel. They are the names a Dante receive channel subscribes to it by; the Sender reports them and they are fixed at the constraints endpoint. Dante Senders must support all parameters in this schema.",
+  "title": "Dante Sender Transport Parameters",
+  "type": "object",
+  "properties": {
+    "device_name": {
+      "type": "string",
+      "description": "Name of the Dante device that transmits the channel: 1 to 31 letters, digits and hyphens.",
+      "pattern": "^[A-Za-z0-9-]{1,31}$"
+    },
+    "channel_name": {
+      "type": "string",
+      "description": "Name of the transmit channel on that device: 1 to 31 characters, none of them '@'.",
+      "pattern": "^[^@]{1,31}$"
+    }
+  },
+  "additionalProperties": false
+}

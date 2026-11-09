@@ -25,11 +25,14 @@ final class NMOSOcaTransportTests: XCTestCase {
     XCTAssertEqual(NMOSOcaTransport.base(of: NMOSOcaTransport.dante), NMOSOcaTransport.dante)
   }
 
-  // Dante and Milan are named in the transport namespace, but IS-05 v1.1 knows neither,
-  // so its version of the API does not serve them
-  func testDanteAndMilanAreInTheTransportNamespaceAndServedFromV1_2() {
-    for transport in [NMOSOcaTransport.dante, NMOSOcaTransport.milan] {
-      XCTAssertTrue(transport.hasPrefix("urn:x-nmos:transport:"))
+  // Dante and IEEE 1722 are named in PADL's namespace, `urn:x-nmos:` being AMWA's, and
+  // IS-05 v1.1 knows neither, so its version of the API does not serve them
+  func testDanteAndIEEE1722AreInPADLsNamespaceAndServedFromV1_2() {
+    XCTAssertEqual(NMOSOcaTransport.dante, "urn:x-padl:transport:dante")
+    XCTAssertEqual(NMOSOcaTransport.ieee1722, "urn:x-padl:transport:ieee1722")
+    for transport in [NMOSOcaTransport.dante, NMOSOcaTransport.ieee1722] {
+      XCTAssertFalse(transport.hasPrefix("urn:x-nmos:"))
+      XCTAssertEqual(NMOSOcaTransport.base(of: transport), transport)
       XCTAssertEqual(NMOSConnectionAPI.earliestVersion(serving: transport), .v1_2)
     }
     XCTAssertEqual(NMOSConnectionAPI.earliestVersion(serving: NMOSOcaTransport.rtp), .v1_1)

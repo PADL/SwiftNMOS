@@ -69,7 +69,7 @@ final class NMOSOcaAdaptationsTests: XCTestCase {
     let claimedDante = await adaptations.adaptation(for: endpoint(dante))
     XCTAssertTrue(claimedDante is NMOSOcaDanteAdaptation)
     let claimedMilan = await adaptations.adaptation(for: endpoint(milan))
-    XCTAssertTrue(claimedMilan is NMOSOcaMilanAdaptation)
+    XCTAssertTrue(claimedMilan is NMOSOcaIEEE1722Adaptation)
     let claimedUnknown = await adaptations.adaptation(for: endpoint(unknown))
     XCTAssertNil(claimedUnknown)
 

@@ -19,10 +19,11 @@ import NMOS
 import SwiftOCA
 import SwiftOCADevice
 
-/// AVB streams of a Milan entity (AES70-22). A listener stream is bound to a talker
-/// stream, which a talker's entity ID and stream index name, so those two are the
-/// transport parameters: of a receiver the talker it is bound to, of a sender its own.
-extension NMOSOcaMilanAdaptation {
+/// IEEE 1722 streams of a Milan entity (AES70-22), the profile of IEEE 1722 presented.
+/// A listener stream is bound to a talker stream, which a talker's entity ID and stream
+/// index name, so those two are the transport parameters: of a receiver the talker it is
+/// bound to, of a sender its own (schemas/*_transport_params_ieee1722.json).
+extension NMOSOcaIEEE1722Adaptation {
   private static let entityID = "entity_id"
   private static let streamIndex = "stream_index"
 
