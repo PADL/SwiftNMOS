@@ -65,30 +65,33 @@ MS-05-02 v1.0.
 ### Enabling and disabling senders
 
 A sender's stream is set up outside NMOS, so its transport parameters are fixed by its
-constraints, but IS-05 `master_enable` starts and stops its transmission where the media
-transport application adopts `NMOSOcaSenderEnabling`. AES70 has no method for this in
-every adaptation (AES70-22 has none for IEEE 1722.1 START_STREAMING and STOP_STREAMING on
-a STREAM_OUTPUT), so the host supplies it. `/active` reports what the application says.
-A sender whose application does not adopt it is always enabled, and an activation that
-would change that fails with 500: the request meets the schema and the constraints
-(`master_enable` has none), which IS-05 answers with 500 when it cannot be carried out.
+constraints. IS-05 `master_enable` starts and stops its transmission with the AES70
+method `ApplyEndpointCommand` (Start or Stop). `/active` reads the endpoint's state in
+`EndpointStatuses`:
 
-## Transports
+- An IEEE 1722 or Dante sender is disabled while Connected, where AES70's Stop leaves an
+  endpoint.
+- An RTP sender is disabled while Ready, or while it has no active description. Connected
+  counts as enabled, as a started sender may wait there for its media.
 
-Dante and IEEE 1722 are not in AMWA's register of transports, and `urn:x-nmos:` is AMWA's
-namespace, so they are named in PADL's. IS-05 serves them from v1.2. Neither has a
-transport file: a receiver is patched by staging its `transport_params`.
+Nothing waits for the device. After an accepted command, `/active` and the activation's
+IS-04 update read what the device reports at that moment. A device that reports its state
+later shows the change in `/active` when it does.
 
-| Transport | URN | Parameters | Schemas |
-|-----------|-----|------------|---------|
-| RTP (AES67, and Dante carried as AES67) | `urn:x-nmos:transport:rtp` | IS-05's | IS-05's |
-| Dante | `urn:x-padl:transport:dante` | `device_name`, `channel_name` | [sender](schemas/sender_transport_params_dante.json), [receiver](schemas/receiver_transport_params_dante.json) |
-| IEEE 1722 | `urn:x-padl:transport:ieee1722` | `entity_id`, `stream_index` | [sender](schemas/sender_transport_params_ieee1722.json), [receiver](schemas/receiver_transport_params_ieee1722.json) |
+A refusal is answered as its status says. `Locked` gives 423, and a parameter error 400.
+`NotImplemented` or any other status gives 500, because the request meets the schema and
+the constraints and IS-05 answers it with 500 when it cannot be carried out. IS-05 cannot
+constrain `master_enable` (`/constraints` covers transport parameters only), so these
+senders say nothing in advance and refuse a disable with 500:
 
-The schemas in [`schemas/`](schemas) follow IS-05's per-transport ones. An IEEE 1722
-`entity_id` is written as IEEE 1722.1 writes an EUI-64, 16 hexadecimal digits with an
-optional `0x`, not in IS-04's hyphenated form. The bridge presents a Milan entity's
-streams (AES70-22) as IEEE 1722, Milan being the profile of it the entity implements.
+- every IEEE 1722 sender behind AES70-22, because Milan refuses STOP_STREAMING on a
+  STREAM_OUTPUT (Milan v1.2 Section 5.4.2.20);
+- every Dante sender, because AES70-23 has no transmit stop.
+
+The bridge does not observe sender states beyond what it already reads. A stop made by
+another controller reaches `/active` at once, and IS-04 the next time the device is
+described. An RTP application that describes its streams itself is the exception: its
+status is observed, so IS-04 follows that change too.
 
 ## Example
 

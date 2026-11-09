@@ -175,6 +175,21 @@ final class RTPConnectionTests: XCTestCase {
     XCTAssertTrue(application.configured.isEmpty)
   }
 
+  /// A sender is disabled while Ready, which is where a device leaves one it has not
+  /// started; Connected counts as enabled, as a started sender may wait there for media.
+  @OcaDevice
+  func testASenderIsDisabledWhileReady() async throws {
+    let application = try await makeApplication()
+    let stack = try await ConnectionStack([application])
+    let path = "senders/\(await stack.id(application, 1001))"
+    application.update(endpointID: 1001, status: .init(state: .ready))
+    let ready = try await stack.send(.GET, "\(path)/active")
+    XCTAssertEqual(ready.json?["master_enable"], false)
+    application.update(endpointID: 1001, status: .init(state: .connected))
+    let connected = try await stack.send(.GET, "\(path)/active")
+    XCTAssertEqual(connected.json?["master_enable"], true)
+  }
+
   @OcaDevice
   func testATransportFileIsPassedToConfigureEndpointFromSDP() async throws {
     let application = try await makeApplication()

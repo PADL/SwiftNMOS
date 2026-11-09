@@ -41,6 +41,13 @@ extension NMOSOcaRTPAdaptation {
       + NMOSOcaEndpoint.addressProperties
   }
 
+  /// A sender with an active description transmits unless it is Ready: AES70-21 starts one
+  /// from there with Connect and Start (Annex, Phase 5). Connected counts as enabled, as a
+  /// started sender may wait there for its media.
+  public func isSenderEnabled(in state: OcaMediaStreamEndpointState) -> Bool {
+    state != .ready
+  }
+
   private func adaptationData(of endpoint: NMOSOcaEndpoint) -> Aes67EndpointAdaptationData? {
     guard endpoint.application is SwiftOCADevice.Aes67OcaMediaTransportApplication else { return nil }
     return try? endpoint.endpoint.adaptationData.decode(Aes67EndpointAdaptationData.self)
