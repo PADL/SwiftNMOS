@@ -240,9 +240,8 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     let ids = NMOSOcaResourceIDs(seed: host().seed)
 
     let receivers = await store.receivers
-    let receiver = try XCTUnwrap(receivers.first {
-      $0.id == ids.id(.receiver, application: transports.aes67.objectNumber, endpoint: 1)
-    })
+    let receiverID = await TestDevice.id(.receiver, transports.aes67, 1, in: ids)
+    let receiver = try XCTUnwrap(receivers.first { $0.id == receiverID })
     XCTAssertEqual(receiver.label, "Receiver 1")
     // a receiver takes unicast or multicast, so it gives no subclassification
     XCTAssertEqual(receiver.transport, "urn:x-nmos:transport:rtp")
@@ -262,9 +261,8 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     let senders = await store.senders
     let receivers = await store.receivers
 
-    let danteSender = try XCTUnwrap(senders.first {
-      $0.id == ids.id(.sender, application: transports.dante.objectNumber, endpoint: 1001)
-    })
+    let danteSenderID = await TestDevice.id(.sender, transports.dante, 1001, in: ids)
+    let danteSender = try XCTUnwrap(senders.first { $0.id == danteSenderID })
     XCTAssertEqual(danteSender.transport, "urn:x-padl:transport:dante")
     XCTAssertEqual(danteSender.label, "Left")
     // a Dante transmit channel sends to whoever subscribes
@@ -274,22 +272,20 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     // no interface is assigned, so none is bound
     XCTAssertEqual(danteSender.interfaceBindings, [])
 
-    let danteReceiver = try XCTUnwrap(receivers.first {
-      $0.id == ids.id(.receiver, application: transports.dante.objectNumber, endpoint: 1)
-    })
+    let danteReceiverID = await TestDevice.id(.receiver, transports.dante, 1, in: ids)
+    let danteReceiver = try XCTUnwrap(receivers.first { $0.id == danteReceiverID })
     XCTAssertEqual(danteReceiver.transport, "urn:x-padl:transport:dante")
     XCTAssertTrue(danteReceiver.subscription.active)
     XCTAssertEqual(danteReceiver.caps.mediaTypes, ["audio/L24"])
 
-    let milanReceiver = try XCTUnwrap(receivers.first {
-      $0.id == ids.id(.receiver, application: transports.milan.objectNumber, endpoint: 1)
-    })
+    let milanReceiverID = await TestDevice.id(.receiver, transports.milan, 1, in: ids)
+    let milanReceiver = try XCTUnwrap(receivers.first { $0.id == milanReceiverID })
     XCTAssertEqual(milanReceiver.transport, "urn:x-padl:transport:ieee1722")
     XCTAssertFalse(milanReceiver.subscription.active)
 
     XCTAssertEqual(senders.count, 2)
     XCTAssertEqual(receivers.count, 3)
-    let unknown = ids.id(.receiver, application: transports.unknown.objectNumber, endpoint: 1)
+    let unknown = await TestDevice.id(.receiver, transports.unknown, 1, in: ids)
     XCTAssertFalse(receivers.contains { $0.id == unknown })
 
     // a source has a channel even where the stream says nothing of its channels
@@ -316,11 +312,35 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     await bridge.describe()
     let ids = NMOSOcaResourceIDs(seed: host().seed)
     let senders = await store.senders
-    let sender = try XCTUnwrap(senders.first {
-      $0.id == ids.id(.sender, application: transports.milan.objectNumber, endpoint: 1001)
-    })
+    let senderID = await TestDevice.id(.sender, transports.milan, 1001, in: ids)
+    let sender = try XCTUnwrap(senders.first { $0.id == senderID })
     XCTAssertEqual(sender.transport, "urn:x-padl:transport:ieee1722")
     XCTAssertNil(sender.manifestHref)
+  }
+
+  /// A Milan stream is named by its entity ID and STREAM_OUTPUT index, so any node
+  /// presenting it gives its sender, flow and source the same IDs.
+  @OcaDevice
+  func testAMilanStreamHasTheSameIDsOnEveryNode() async throws {
+    let transports = try await TestTransports()
+    try transports.milan.insert(endpoint: OcaMediaStreamEndpoint(
+      idInternal: 1001,
+      idExternal: MilanMediaStreamEndpointIDExternal(entityID: 0x0011_22FF_FE33_4455, streamIndex: 2).blob,
+      direction: .output
+    ))
+    var described = [[NMOSSenderResource]]()
+    for seed in ["00-22-97-01-02-03", "00-22-97-0A-0B-0C"] {
+      let store = NMOSResourceStore()
+      let bridge = NMOSOcaBridge(store: store) { NMOSOcaHost(seed: seed, endpoints: host().endpoints) }
+      await bridge.describe()
+      await described.append(store.senders)
+    }
+    let native = "ieee1722:001122fffe334455:2"
+    let senderID = NMOSOcaResourceIDs.id(.sender, native: native)
+    for senders in described {
+      let sender = try XCTUnwrap(senders.first { $0.id == senderID })
+      XCTAssertEqual(sender.flowID, NMOSOcaResourceIDs.id(.flow, native: native))
+    }
   }
 
   @OcaDevice
@@ -404,7 +424,7 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     let store = NMOSResourceStore()
     let bridge = NMOSOcaBridge(store: store) { host() }
     let ids = NMOSOcaResourceIDs(seed: host().seed)
-    let id = ids.id(.sender, application: transports.aes67.objectNumber, endpoint: 1001)
+    let id = await TestDevice.id(.sender, transports.aes67, 1001, in: ids)
 
     var endpoint = try XCTUnwrap(transports.aes67.endpoints.first { $0.idInternal == 1001 })
     endpoint.streamCastMode = .none
@@ -454,7 +474,8 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     // a binding may only name an interface the node lists
     let ids = NMOSOcaResourceIDs(seed: host().seed)
     let receivers = await store.receivers
-    let receiver = receivers.first { $0.id == ids.id(.receiver, application: transports.milan.objectNumber, endpoint: 1) }
+    let receiverID = await TestDevice.id(.receiver, transports.milan, 1, in: ids)
+    let receiver = receivers.first { $0.id == receiverID }
     XCTAssertEqual(receiver?.interfaceBindings, ["avb0"])
   }
 
@@ -541,7 +562,7 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     let bridge = NMOSOcaBridge(store: store) { host() }
     await bridge.describe()
     let ids = NMOSOcaResourceIDs(seed: host().seed)
-    let receiverID = ids.id(.receiver, application: transports.dante.objectNumber, endpoint: 1)
+    let receiverID = await TestDevice.id(.receiver, transports.dante, 1, in: ids)
     let peer = NMOSID(UUID())
 
     // as the Connection API does when it starts, and then on an activation

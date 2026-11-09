@@ -74,7 +74,7 @@ final class SenderEnablementTests: XCTestCase {
   @OcaDevice
   func testDisablingASenderStopsItsTransmissionAndActiveSaysSo() async throws {
     let (application, stack) = try await makeStack()
-    let sender = stack.id(application, 1001)
+    let sender = await stack.id(application, 1001)
     let path = "senders/\(sender)"
     let before = try await stack.send(.GET, "\(path)/active")
     XCTAssertEqual(before.json?["master_enable"], true)
@@ -99,7 +99,7 @@ final class SenderEnablementTests: XCTestCase {
   @OcaDevice
   func testAnUnchangedEnablementIsNotSentToTheDevice() async throws {
     let (application, stack) = try await makeStack()
-    let path = "senders/\(stack.id(application, 1001))"
+    let path = "senders/\(await stack.id(application, 1001))"
     let status2 = try await patch(stack, path, enable: true)
     XCTAssertEqual(status2, .ok)
     XCTAssertTrue(application.calls.isEmpty)
@@ -108,7 +108,7 @@ final class SenderEnablementTests: XCTestCase {
   @OcaDevice
   func testAStopMadeElsewhereReachesActive() async throws {
     let (application, stack) = try await makeStack()
-    let path = "senders/\(stack.id(application, 1001))"
+    let path = "senders/\(await stack.id(application, 1001))"
     application.stopped = [1001]
     let active = try await stack.send(.GET, "\(path)/active")
     XCTAssertEqual(active.json?["master_enable"], false)
@@ -117,7 +117,7 @@ final class SenderEnablementTests: XCTestCase {
   @OcaDevice
   func testARefusalByTheDeviceLeavesTheSenderAsItWas() async throws {
     let (application, stack) = try await makeStack()
-    let path = "senders/\(stack.id(application, 1001))"
+    let path = "senders/\(await stack.id(application, 1001))"
     application.refusal = .locked
     let status3 = try await patch(stack, path, enable: false)
     XCTAssertEqual(status3, .locked)
@@ -136,7 +136,7 @@ final class SenderEnablementTests: XCTestCase {
     let application = try await TestDevice.makeApplication("Talker")
     try makeApplication(application)
     let stack = try await ConnectionStack([application])
-    let path = "senders/\(stack.id(application, 1001))"
+    let path = "senders/\(await stack.id(application, 1001))"
 
     let refused = try await stack.send(.PATCH, "\(path)/staged", [
       "master_enable": false, "activation": ["mode": "activate_immediate"],

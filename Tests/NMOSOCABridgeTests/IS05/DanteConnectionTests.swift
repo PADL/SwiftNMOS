@@ -89,11 +89,12 @@ final class DanteConnectionTests: XCTestCase {
   }
 
   /// A transmit channel is subscribed to by the device's name, so renaming the device
-  /// changes its connection: the device manager is watched, and a change signalled.
+  /// makes it a new sender: the device manager is watched, and a change signalled.
   @OcaDevice
-  func testRenamingTheDeviceChangesATransmitChannelsConnection() async throws {
+  func testRenamingTheDeviceMakesATransmitChannelANewSender() async throws {
     let (application, stack) = try await makeStack()
-    let sender = stack.id(application, 1001)
+    let sender = await stack.id(application, 1001)
+    XCTAssertEqual(sender, ConnectionStack.ids.id(.sender, deviceNative: "dante:Left@MonitorTwo-0A1B"))
     let signals = Mutex(0)
     let changes = stack.bridge.connectionProvider.connectionChanges()
     let task = Task {
@@ -115,15 +116,20 @@ final class DanteConnectionTests: XCTestCase {
       try await Task.sleep(for: .milliseconds(10))
     }
     XCTAssertGreaterThan(count(), before)
-    let active = try await stack.send(.GET, "senders/\(sender)/active")
+    let renamed = await stack.id(application, 1001)
+    XCTAssertNotEqual(renamed, sender)
+    XCTAssertEqual(renamed, ConnectionStack.ids.id(.sender, deviceNative: "dante:Left@MonitorTwo-Renamed"))
+    let gone = try await stack.send(.GET, "senders/\(sender)/active")
+    XCTAssertEqual(gone.status, .notFound)
+    let active = try await stack.send(.GET, "senders/\(renamed)/active")
     XCTAssertEqual(active.json?["transport_params"], [["device_name": "MonitorTwo-Renamed", "channel_name": "Left"]])
   }
 
   @OcaDevice
   func testChannelsAreConnectionsOfTheDanteTransport() async throws {
     let (application, stack) = try await makeStack()
-    let receiver = "receivers/\(stack.id(application, 1))"
-    let sender = "senders/\(stack.id(application, 1001))"
+    let receiver = "receivers/\(await stack.id(application, 1))"
+    let sender = "senders/\(await stack.id(application, 1001))"
 
     let type = try await stack.send(.GET, "\(receiver)/transporttype")
     XCTAssertEqual(type.json, "urn:x-padl:transport:dante")
@@ -167,7 +173,7 @@ final class DanteConnectionTests: XCTestCase {
   @OcaDevice
   func testAPatchSubscribesWithSetChannelEndpoint() async throws {
     let (application, stack) = try await makeStack()
-    let path = "receivers/\(stack.id(application, 1))"
+    let path = "receivers/\(await stack.id(application, 1))"
     let result = try await stack.send(.PATCH, "\(path)/staged", [
       "master_enable": true, "activation": ["mode": "activate_immediate"],
       "transport_params": [["device_name": "StageBox", "channel_name": "Kick"]],
@@ -201,14 +207,14 @@ final class DanteConnectionTests: XCTestCase {
   @OcaDevice
   func testASenderHasNoTransportFileAndAReceiverIsPatchedByItsParameters() async throws {
     let (application, stack) = try await makeStack()
-    let sender = stack.id(application, 1001)
+    let sender = await stack.id(application, 1001)
     let file = try await stack.send(.GET, "senders/\(sender)/transportfile")
     XCTAssertEqual(file.status, .notFound)
     let talker = try await stack.send(.GET, "senders/\(sender)/active")
     let parameters = try XCTUnwrap(talker.json?["transport_params"])
     XCTAssertEqual(parameters, [["device_name": "MonitorTwo-0A1B", "channel_name": "Left"]])
 
-    let path = "receivers/\(stack.id(application, 1))/staged"
+    let path = "receivers/\(await stack.id(application, 1))/staged"
     let result = try await stack.send(.PATCH, path, [
       "sender_id": .string(sender.description), "master_enable": true,
       "activation": ["mode": "activate_immediate"], "transport_params": parameters,
@@ -233,7 +239,7 @@ final class DanteConnectionTests: XCTestCase {
     let (application, stack) = try await makeStack()
     application.delay = .milliseconds(150)
     let peer = NMOSID(UUID(version5: "peer", namespace: NMOSOcaResourceIDs.namespace))
-    let path = "receivers/\(stack.id(application, 1))"
+    let path = "receivers/\(await stack.id(application, 1))"
     let result = try await stack.send(.PATCH, "\(path)/staged", [
       "sender_id": .string(peer.description), "master_enable": true, "activation": ["mode": "activate_immediate"],
       "transport_params": [["device_name": "StageBox", "channel_name": "Snare"]],
@@ -249,7 +255,7 @@ final class DanteConnectionTests: XCTestCase {
   func testAnActivationTheDeviceNeverShowsStopsWaiting() async throws {
     let (application, stack) = try await makeStack()
     application.neverShows = true
-    let path = "receivers/\(stack.id(application, 1))"
+    let path = "receivers/\(await stack.id(application, 1))"
     let started = ContinuousClock.now
     let result = try await stack.send(.PATCH, "\(path)/staged", [
       "master_enable": true, "activation": ["mode": "activate_immediate"],
@@ -265,15 +271,16 @@ final class DanteConnectionTests: XCTestCase {
   func testAChannelIsFoundByItsNumberUnlessAnotherNamesItsStreamEndpoint() async throws {
     let (application, stack) = try await makeStack()
     func channel(_ remote: String, naming id: OcaMediaStreamEndpointID) throws -> OcaChannelEndpoint {
+      // a device's receive channels have names of their own
       try OcaChannelEndpoint(
-        idExternal: OcaBlob("01".utf8), direction: .input,
+        idExternal: OcaBlob("From \(remote)".utf8), direction: .input,
         adaptationData: DanteChannelEndpointAdaptationData(
           remoteAddress: DanteChannelAddress(device: remote, channel: "01"), streamEndpointID: id
         ).blob
       )
     }
     func device(_ id: OcaMediaStreamEndpointID) async throws -> NMOSJSONValue? {
-      try await stack.parameters("receivers/\(stack.id(application, id))/active")?["device_name"]
+      try await stack.parameters("receivers/\(await stack.id(application, id))/active")?["device_name"]
     }
     for id in [2, 3] as [OcaID16] {
       application.insert(endpoint: OcaMediaStreamEndpoint(idInternal: OcaMediaStreamEndpointID(id), direction: .input))
@@ -293,7 +300,7 @@ final class DanteConnectionTests: XCTestCase {
   @OcaDevice
   func testASubscriptionMadeInDanteControllerReachesActive() async throws {
     let (application, stack) = try await makeStack()
-    let path = "receivers/\(stack.id(application, 1))"
+    let path = "receivers/\(await stack.id(application, 1))"
     _ = try await stack.send(.GET, "\(path)/active")
     try application.show(DanteChannelAddress(device: "Console", channel: "Mix L"), on: 1)
     let active = try await stack.wait(for: "\(path)/active") { $0["master_enable"] == true }
@@ -312,8 +319,8 @@ final class DanteConnectionTests: XCTestCase {
     let (application, stack) = try await makeStack()
     let senderSchema = try TransportParamsSchema("sender_transport_params_dante")
     let receiverSchema = try TransportParamsSchema("receiver_transport_params_dante")
-    let receiver = "receivers/\(stack.id(application, 1))"
-    let sender = "senders/\(stack.id(application, 1001))"
+    let receiver = "receivers/\(await stack.id(application, 1))"
+    let sender = "senders/\(await stack.id(application, 1001))"
 
     let talker = try await stack.send(.GET, "\(sender)/active")
     talker.json?["transport_params"]?.arrayValue?.forEach { senderSchema.check($0) }

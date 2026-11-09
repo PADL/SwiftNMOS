@@ -35,6 +35,21 @@ enum TestDevice {
     return manager
   }
 
+  /// The ID the bridge gives the endpoint's resource of `kind`: from the endpoint's native
+  /// name where its adaptation gives one, else from the node.
+  static func id(
+    _ kind: NMOSResourceKind,
+    _ application: SwiftOCADevice.OcaMediaTransportApplication,
+    _ endpoint: OcaMediaStreamEndpointID,
+    in ids: NMOSOcaResourceIDs,
+    adaptations: NMOSOcaAdaptations = .standard
+  ) async -> NMOSID {
+    guard let found = NMOSOcaEndpoint(application: application, id: endpoint),
+          let adaptation = await adaptations.adaptation(for: found)
+    else { return ids.id(kind, application: application.objectNumber, endpoint: endpoint) }
+    return await adaptation.id(kind, of: found, in: ids)
+  }
+
   static func makeApplication(_ role: String) async throws -> SwiftOCADevice.OcaMediaTransportApplication {
     try await SwiftOCADevice.OcaMediaTransportApplication(
       role: "\(role)-\(UUID().uuidString)", deviceDelegate: OcaDevice.shared
@@ -103,7 +118,10 @@ final class NMOSOcaEndpointWalkerTests: XCTestCase {
 
     // the same endpoint number in two applications is two different receivers
     let ids = NMOSOcaResourceIDs(seed: "seed")
-    let receivers = endpoints.filter { !$0.isSender }.map { $0.id(.receiver, in: ids) }
+    var receivers = [NMOSID]()
+    for endpoint in endpoints where !endpoint.isSender {
+      await receivers.append(TestDevice.id(.receiver, endpoint.application, endpoint.endpoint.idInternal, in: ids))
+    }
     XCTAssertEqual(Set(receivers).count, 2)
   }
 

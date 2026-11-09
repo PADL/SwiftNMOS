@@ -21,6 +21,44 @@ An [AMWA NMOS](https://specs.amwa.tv/nmos/) node in Swift, and a bridge that pre
   AES70 object as an MS-05-02 object, with native NMOS classes where one applies. See
   [`Sources/NMOSOCABridge/IS12/README.md`](Sources/NMOSOCABridge/IS12/README.md).
 
+### Resource IDs
+
+The bridge derives every ID as a UUIDv5, so the same device gives the same IDs after every
+restart. The node and device are named from the host's seed (a MAC address or serial
+number). A sender, receiver, flow or source is named `<kind>/<native name>`, from its
+transport's own name for the endpoint; the kind (`sender`, `receiver`, `flow` or
+`source`, none containing `/`) keeps apart a talker and a listener of the same entity ID
+and index, and a sender from its flow and source. The native names are canonical:
+
+| Transport | Native name | Namespace |
+|---|---|---|
+| IEEE 1722 (Milan) | `ieee1722:<entity ID>:<unique ID>`: the entity ID as 16 lowercase hex digits without `0x`, and the stream's ACMP talker or listener unique ID, its STREAM_OUTPUT or STREAM_INPUT index | fixed, `2a72491d-cc4b-42a3-8690-bd91e5a856d5` |
+| Dante | `dante:<channel>@<device>`, Dante's own notation for a channel on a device | the device's ID |
+| RTP (AES67) | none: named from the application and the endpoint | the device's ID |
+
+IS-04 IDs share one space in a registry: a UUID is universally unique (RFC 4122), and
+the Registration API refuses an `id` "already used by another resource type held in the
+registry" (IS-04 v1.3 Behaviour: Registration). An IEEE 1722 entity ID is an EUI-64
+(IEEE 1722.1-2021 Clause 6.2.1.8), unique everywhere, so its streams are named in the
+fixed namespace and any node presenting the bridge's entity gives them the same IDs. A
+Dante device name is unique only within its Dante network, and two bridges on two
+networks may both keep the default name, so a Dante name is qualified by the device.
+IS-04 also says a sender, receiver or source is owned by its device and SHOULD change
+if the device ID does (Data Model: Identifier Mapping), which the device namespace keeps.
+
+The transport prefix is not needed for uniqueness today: every Dante name contains `@`,
+which neither name may (the IS-05 patterns), and no IEEE 1722 name does. It is kept
+because IS-04 says a sender or receiver ID SHOULD change if its transport type URN
+changes, and naming the transport makes that hold by construction for any transport
+added later whose names could overlap.
+
+AES70-23 exposes no Dante device ID that survives a rename, so renaming a Dante device or
+channel makes its senders, receivers, flows and sources new resources: the old ones are
+removed and new ones registered, and a controller connects them again. A Milan entity ID
+is fixed for the entity's life. An RTP endpoint has no name that outlives its session,
+so it stays seeded. IS-04 lets one node register a resource, so only the node that owns
+an endpoint presents it to a registry.
+
 The specifications followed are IS-04 v1.3, IS-05 v1.1 and v1.2, IS-12 v1.0 and
 MS-05-02 v1.0.
 

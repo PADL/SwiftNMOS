@@ -123,9 +123,9 @@ extension NMOSOcaBridge {
     context: NMOSOcaDescriptionContext
   ) async -> [NMOSResource] {
     let ids = context.ids
-    let sourceID = endpoint.id(.source, in: ids)
-    let flowID = endpoint.id(.flow, in: ids)
-    let senderID = endpoint.id(.sender, in: ids)
+    let sourceID = await adaptation.id(.source, of: endpoint, in: ids)
+    let flowID = await adaptation.id(.flow, of: endpoint, in: ids)
+    let senderID = await adaptation.id(.sender, of: endpoint, in: ids)
     let label = endpoint.label
     let description = "\(endpoint.applicationName) output \(endpoint.endpoint.idInternal)"
     let mediaType = endpoint.mediaTypes[0]
@@ -163,7 +163,7 @@ extension NMOSOcaBridge {
     adaptation: any NMOSOcaTransportAdaptation,
     context: NMOSOcaDescriptionContext
   ) async -> NMOSReceiverResource {
-    let receiverID = endpoint.id(.receiver, in: context.ids)
+    let receiverID = await adaptation.id(.receiver, of: endpoint, in: context.ids)
     return await NMOSReceiverResource(
       id: receiverID,
       label: endpoint.label,

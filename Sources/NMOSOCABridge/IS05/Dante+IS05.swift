@@ -63,8 +63,9 @@ extension NMOSOcaDanteAdaptation {
       ?? DanteChannelAddress()
   }
 
-  /// The name receivers subscribe to a transmit channel by: its external ID as text.
-  private func ownChannelName(of endpoint: NMOSOcaEndpoint) -> String {
+  /// The channel's own name, by which receivers subscribe to a transmit channel: its
+  /// external ID as text, else the endpoint's label.
+  func channelName(of endpoint: NMOSOcaEndpoint) -> String {
     let external = channelEndpoint(of: endpoint)?.channel.idExternal ?? endpoint.endpoint.idExternal
     let name = String(decoding: external, as: UTF8.self)
     return name.isEmpty ? endpoint.endpoint.userLabel : name
@@ -74,7 +75,7 @@ extension NMOSOcaDanteAdaptation {
     if endpoint.isSender {
       let device = await endpoint.application.deviceDelegate?.deviceManager?.deviceName ?? ""
       return NMOSConnectionState(masterEnable: isSenderEnabled(endpoint), transportParameters: [[
-        Self.deviceName: .string(device), Self.channelName: .string(ownChannelName(of: endpoint)),
+        Self.deviceName: .string(device), Self.channelName: .string(channelName(of: endpoint)),
       ]])
     }
     let remote = remoteAddress(of: channelEndpoint(of: endpoint)?.channel)
