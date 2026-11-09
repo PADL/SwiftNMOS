@@ -62,7 +62,7 @@ final class TestMilanSessionAgent: SwiftOCADevice.MilanOcaMediaTransportSessionA
   }
 }
 
-final class MilanConnectionTests: XCTestCase {
+final class IEEE1722ConnectionTests: XCTestCase {
   private static let entity: OcaUint64 = 0x0011_22FF_FE33_4455
 
   @OcaDevice
@@ -87,20 +87,20 @@ final class MilanConnectionTests: XCTestCase {
   }
 
   @OcaDevice
-  func testStreamsAreConnectionsOfTheMilanTransport() async throws {
+  func testStreamsAreConnectionsOfTheIEEE1722Transport() async throws {
     let (application, _, stack) = try await makeStack()
     let receiver = "receivers/\(stack.id(application, 1))"
     let sender = "senders/\(stack.id(application, 1001))"
 
     let type = try await stack.send(.GET, "\(receiver)/transporttype")
-    XCTAssertEqual(type.json, "urn:x-nmos:transport:milan")
+    XCTAssertEqual(type.json, "urn:x-padl:transport:ieee1722")
     let unbound = try await stack.send(.GET, "\(receiver)/active")
     XCTAssertEqual(unbound.json?["master_enable"], false)
     XCTAssertEqual(unbound.json?["transport_params"], [["entity_id": .null, "stream_index": .null]])
 
     let talker = try await stack.send(.GET, "\(sender)/active")
     XCTAssertEqual(talker.json?["transport_params"], [["entity_id": "001122fffe334455", "stream_index": 0]])
-    // Milan has no transport file
+    // IEEE 1722 has no transport file
     let file = try await stack.send(.GET, "\(sender)/transportfile")
     XCTAssertEqual(file.status, .notFound)
   }
@@ -126,6 +126,9 @@ final class MilanConnectionTests: XCTestCase {
     let file: NMOSJSONValue = ["data": "{}", "type": "application/json"]
     let wrong = try await stack.send(.PATCH, path, ["transport_file": file])
     XCTAssertEqual(wrong.status, .badRequest)
+    XCTAssertEqual(
+      wrong.json?["error"], "IEEE 1722 receivers have no transport file; stage `transport_params` instead"
+    )
   }
 
   @OcaDevice
@@ -220,5 +223,37 @@ final class MilanConnectionTests: XCTestCase {
     )
     let active = try await stack.wait(for: "\(path)/active") { $0["master_enable"] == true }
     XCTAssertEqual(active?["transport_params"], [["entity_id": "00000000000000ab", "stream_index": 1]])
+  }
+
+  /// The parameters and constraints served are those
+  /// schemas/*_transport_params_ieee1722.json describe, whether the listener is bound or not.
+  @OcaDevice
+  func testTheParametersMeetTheIEEE1722Schemas() async throws {
+    let (application, _, stack) = try await makeStack()
+    let senderSchema = try TransportParamsSchema("sender_transport_params_ieee1722")
+    let receiverSchema = try TransportParamsSchema("receiver_transport_params_ieee1722")
+    let receiver = "receivers/\(stack.id(application, 1))"
+    let sender = "senders/\(stack.id(application, 1001))"
+
+    let talker = try await stack.send(.GET, "\(sender)/active")
+    talker.json?["transport_params"]?.arrayValue?.forEach { senderSchema.check($0) }
+    let senderConstraints = try await stack.send(.GET, "\(sender)/constraints")
+    XCTAssertEqual(senderConstraints.json?.arrayValue?.first?.objectValue.map { Set($0.keys) }, senderSchema.properties)
+
+    let constraints = try await stack.send(.GET, "\(receiver)/constraints")
+    let leg = try XCTUnwrap(constraints.json?.arrayValue?.first?.objectValue)
+    XCTAssertEqual(Set(leg.keys), receiverSchema.properties)
+    XCTAssertEqual(leg["entity_id"]?["pattern"]?.stringValue, receiverSchema.pattern(of: "entity_id"))
+    XCTAssertEqual(leg["stream_index"], ["minimum": 0, "maximum": 65535])
+    let unbound = try await stack.send(.GET, "\(receiver)/active")
+    unbound.json?["transport_params"]?.arrayValue?.forEach { receiverSchema.check($0) }
+    let result = try await stack.send(.PATCH, "\(receiver)/staged", [
+      "master_enable": true, "activation": ["mode": "activate_immediate"],
+      "transport_params": try XCTUnwrap(talker.json?["transport_params"]),
+    ])
+    XCTAssertEqual(result.status, .ok)
+    let bound = try await stack.wait(for: "\(receiver)/active") { $0["master_enable"] == true }
+    XCTAssertNotNil(bound)
+    bound?["transport_params"]?.arrayValue?.forEach { receiverSchema.check($0) }
   }
 }

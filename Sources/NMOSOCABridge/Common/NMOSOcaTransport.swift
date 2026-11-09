@@ -15,17 +15,30 @@
 //
 
 /// The NMOS transport URNs the bridge gives OCA media transport applications. Dante and
-/// Milan are not in AMWA's register of transports; IS-04 and IS-05 v1.2 admit any name
-/// in the transport namespace, which is where they are put.
+/// IEEE 1722 are not in AMWA's register of transports, whose `urn:x-nmos:` namespace is
+/// AMWA's own, so they are named in PADL's; IS-04 v1.3 and IS-05 v1.2 admit any
+/// manufacturer's namespace. Their transport parameters are described by the JSON
+/// schemas in `schemas/`.
 public enum NMOSOcaTransport {
   /// RTP, for AES67 and for Dante endpoints carried by AES67 flows.
   public static let rtp = "urn:x-nmos:transport:rtp"
   public static let rtpMulticast = "urn:x-nmos:transport:rtp.mcast"
   public static let rtpUnicast = "urn:x-nmos:transport:rtp.ucast"
   /// Native Dante audio transport, patched by device and channel name.
-  public static let dante = "urn:x-nmos:transport:dante"
-  /// AVB streams of a Milan entity, patched by talker entity ID and stream index.
-  public static let milan = "urn:x-nmos:transport:milan"
+  public static let dante = "urn:x-padl:transport:dante"
+  /// IEEE 1722 (AVTP) streams, patched by talker entity ID and stream index; a Milan
+  /// entity is the profile of it the bridge presents.
+  public static let ieee1722 = "urn:x-padl:transport:ieee1722"
+
+  /// The name of a transport for messages: "Dante", "IEEE 1722" or the URN itself.
+  public static func displayName(of transport: String) -> String {
+    switch base(of: transport) {
+    case dante: "Dante"
+    case ieee1722: "IEEE 1722"
+    case rtp: "RTP"
+    default: transport
+    }
+  }
 
   /// The URN with any subclassification removed, as IS-05 `/transporttype` reports it.
   public static func base(of transport: String) -> String {

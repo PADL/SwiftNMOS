@@ -42,8 +42,9 @@ public struct NMOSOcaDanteAdaptation: NMOSOcaTransportAdaptation {
   public func transport(of endpoint: NMOSOcaEndpoint) async -> String { NMOSOcaTransport.dante }
 }
 
-/// AVB streams of a Milan entity, patched by talker entity ID and stream index.
-public struct NMOSOcaMilanAdaptation: NMOSOcaTransportAdaptation {
+/// IEEE 1722 streams, patched by talker entity ID and stream index. The endpoints are
+/// those of a Milan entity (AES70-22), the profile of IEEE 1722 the bridge presents.
+public struct NMOSOcaIEEE1722Adaptation: NMOSOcaTransportAdaptation {
   public nonisolated init() {}
 
   /// A clock reference stream is left out: it carries no audio, and NMOS has no kind
@@ -53,7 +54,7 @@ public struct NMOSOcaMilanAdaptation: NMOSOcaTransportAdaptation {
       && endpoint.endpoint.currentStreamMode.frameFormat != .crf_milan
   }
 
-  public func transport(of endpoint: NMOSOcaEndpoint) async -> String { NMOSOcaTransport.milan }
+  public func transport(of endpoint: NMOSOcaEndpoint) async -> String { NMOSOcaTransport.ieee1722 }
 }
 
 /// The adaptations a bridge presents endpoints through, in the order they are asked.
@@ -66,7 +67,7 @@ public struct NMOSOcaAdaptations: Sendable {
 
   /// RTP first, so a Dante endpoint carried by an AES67 flow is patched as RTP.
   public static var standard: NMOSOcaAdaptations {
-    NMOSOcaAdaptations([NMOSOcaRTPAdaptation(), NMOSOcaDanteAdaptation(), NMOSOcaMilanAdaptation()])
+    NMOSOcaAdaptations([NMOSOcaRTPAdaptation(), NMOSOcaDanteAdaptation(), NMOSOcaIEEE1722Adaptation()])
   }
 
   /// The first adaptation to claim the endpoint; nil for a transport none of them knows,

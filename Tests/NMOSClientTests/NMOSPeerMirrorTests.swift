@@ -855,10 +855,10 @@ final class NMOSNodeClientTests: XCTestCase {
       """#,
       "senders": #"""
       [{"description":"MediaTransportApplication output 1006","device_id":"0b1c2917-c3e5-5030-82d6-96191cd571af","flow_id":"001974f9-aff3-5269-8eb2-c7ee609a1fe5","id":"02b1619b-a6e0-5dc3-8c01-9ea3aeb929bf","interface_bindings":["ens4"],"label":"AES67 out 6","manifest_href":"http://10.10.32.8:80/x-nmos/connection/v1.1/single/senders/02b1619b-a6e0-5dc3-8c01-9ea3aeb929bf/transportfile","subscription":{"active":true,"receiver_id":null},"tags":{},"transport":"urn:x-nmos:transport:rtp.mcast","version":"1793438317:739514827"},
-       {"description":"RouterOne output 1016","device_id":"002563da-2743-5213-af1e-3f2e096f0a9b","flow_id":"0613c66c-d55c-57e2-82df-f77bdcc81c05","id":"03f74782-5a60-5fef-8525-e24f602e58cf","interface_bindings":["enP1p1s0"],"label":"AVB out 16","manifest_href":null,"subscription":{"active":true,"receiver_id":null},"tags":{},"transport":"urn:x-nmos:transport:milan","version":"1793440183:746914625"}]
+       {"description":"RouterOne output 1016","device_id":"002563da-2743-5213-af1e-3f2e096f0a9b","flow_id":"0613c66c-d55c-57e2-82df-f77bdcc81c05","id":"03f74782-5a60-5fef-8525-e24f602e58cf","interface_bindings":["enP1p1s0"],"label":"AVB out 16","manifest_href":null,"subscription":{"active":true,"receiver_id":null},"tags":{},"transport":"urn:x-padl:transport:ieee1722","version":"1793440183:746914625"}]
       """#,
       "receivers": #"""
-      [{"caps":{"media_types":["audio/L32"]},"description":"brohavn input 7","device_id":"0b1c2917-c3e5-5030-82d6-96191cd571af","format":"urn:x-nmos:format:audio","id":"05637b07-6e6e-571c-9c2e-a27d014edfc8","interface_bindings":["enp8s0"],"label":"AVB in 7","subscription":{"active":true,"sender_id":null},"tags":{},"transport":"urn:x-nmos:transport:milan","version":"1793438317:980738878"}]
+      [{"caps":{"media_types":["audio/L32"]},"description":"brohavn input 7","device_id":"0b1c2917-c3e5-5030-82d6-96191cd571af","format":"urn:x-nmos:format:audio","id":"05637b07-6e6e-571c-9c2e-a27d014edfc8","interface_bindings":["enp8s0"],"label":"AVB in 7","subscription":{"active":true,"sender_id":null},"tags":{},"transport":"urn:x-padl:transport:ieee1722","version":"1793438317:980738878"}]
       """#,
     ])
     let devices = try await client.resources(NMOSDeviceResource.self)

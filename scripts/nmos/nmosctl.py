@@ -188,7 +188,7 @@ def patch(node, kind, identifier, body):
 def cmd_connect(node, args):
     sender_node = Node(args.sender_url) if args.sender_url else node
     body = {"sender_id": args.sender, "master_enable": True, "activation": {"mode": "activate_immediate"}}
-    # a transport with no transport file (Dante, Milan) is patched by the sender's parameters
+    # a transport with no transport file (Dante, IEEE 1722) is patched by the sender's parameters
     if sender_node.resource("sender", args.sender).get("manifest_href"):
         data, content_type = transport_file(sender_node, args.sender)
         body["transport_file"] = {"data": data, "type": content_type}
