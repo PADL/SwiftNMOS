@@ -22,22 +22,30 @@ import SwiftOCA
 import SwiftOCADevice
 import XCTest
 
-/// An IEEE 1722 entity's application whose talkers can be stopped, as an adaptation that
-/// sends START_STREAMING and STOP_STREAMING to the entity's STREAM_OUTPUT can.
-final class TestStoppableApplication: SwiftOCADevice.OcaMediaTransportApplication, NMOSOcaSenderEnabling {
-  var stopped = Set<OcaMediaStreamEndpointID>()
-  var calls = [(id: OcaMediaStreamEndpointID, enabled: Bool)]()
-  /// When set, the device refuses to change the state.
+/// An IEEE 1722 entity's application whose talkers are started and stopped with
+/// ApplyEndpointCommand, as one that sends START_STREAMING and STOP_STREAMING can; a
+/// stopped talker is Connected, a started one Ready.
+final class TestStoppableApplication: SwiftOCADevice.OcaMediaTransportApplication {
+  var calls = [(id: OcaMediaStreamEndpointID, command: OcaMediaStreamEndpointCommand)]()
+  /// When set, the device refuses the command.
   var refusal: OcaStatus?
+  /// When set, the device reports the new state only after this long.
+  var reportDelay: Duration?
 
-  func isSenderEnabled(_ id: OcaMediaStreamEndpointID) -> Bool {
-    !stopped.contains(id)
-  }
-
-  func setSenderEnabled(_ id: OcaMediaStreamEndpointID, _ enabled: Bool) async throws {
-    calls.append((id, enabled))
+  override func applyEndpointCommand(
+    endpointID id: OcaMediaStreamEndpointID,
+    command: OcaMediaStreamEndpointCommand,
+    from controller: any OcaController
+  ) async throws {
+    calls.append((id, command))
     if let refusal { throw Ocp1Error.status(refusal) }
-    if enabled { stopped.remove(id) } else { stopped.insert(id) }
+    guard command == .start || command == .stop else { throw Ocp1Error.status(.notImplemented) }
+    let status = OcaMediaStreamEndpointStatus(state: command == .stop ? .connected : .ready)
+    guard let reportDelay else { return update(endpointID: id, status: status) }
+    Task { @OcaDevice in
+      try? await Task.sleep(for: reportDelay)
+      self.update(endpointID: id, status: status)
+    }
   }
 }
 
@@ -51,7 +59,7 @@ final class SenderEnablementTests: XCTestCase {
       idInternal: 1001,
       idExternal: MilanMediaStreamEndpointIDExternal(entityID: Self.entity, streamIndex: 0).blob,
       direction: .output
-    ))
+    ), status: .init(state: .ready))
   }
 
   @OcaDevice
@@ -81,7 +89,8 @@ final class SenderEnablementTests: XCTestCase {
 
     let status = try await patch(stack, path, enable: false)
     XCTAssertEqual(status, .ok)
-    XCTAssertEqual(application.stopped, [1001])
+    XCTAssertEqual(application.calls.map(\.command), [.stop])
+    XCTAssertEqual(try application.endpointStatus(1001).state, .connected)
     let after = try await stack.send(.GET, "\(path)/active")
     XCTAssertEqual(after.json?["master_enable"], false)
     // the transport parameters are the talker's own, whether or not it transmits
@@ -91,7 +100,7 @@ final class SenderEnablementTests: XCTestCase {
 
     let status1 = try await patch(stack, path, enable: true)
     XCTAssertEqual(status1, .ok)
-    XCTAssertTrue(application.stopped.isEmpty)
+    XCTAssertEqual(application.calls.map(\.command), [.stop, .start])
     let enabled = try await stack.send(.GET, "\(path)/active")
     XCTAssertEqual(enabled.json?["master_enable"], true)
   }
@@ -109,9 +118,38 @@ final class SenderEnablementTests: XCTestCase {
   func testAStopMadeElsewhereReachesActive() async throws {
     let (application, stack) = try await makeStack()
     let path = "senders/\(await stack.id(application, 1001))"
-    application.stopped = [1001]
+    application.update(endpointID: 1001, status: .init(state: .connected))
     let active = try await stack.send(.GET, "\(path)/active")
     XCTAssertEqual(active.json?["master_enable"], false)
+  }
+
+  /// A sender's state is observed, so a stop made elsewhere reaches IS-04 without the host
+  /// describing the device; a receiver's state alone does not describe it again.
+  @OcaDevice
+  func testAStopMadeElsewhereReachesIS04() async throws {
+    let (application, stack) = try await makeStack()
+    application.insert(
+      endpoint: OcaMediaStreamEndpoint(idInternal: 1, direction: .input),
+      status: .init(state: .ready)
+    )
+    let sender = await stack.id(application, 1001)
+    func active() async -> Bool? {
+      await stack.store.senders.first { $0.id == sender }?.subscription.active
+    }
+    for _ in 0..<300 where await stack.store.receivers.isEmpty {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    let before = stack.described.value.withLock { $0 }
+    application.update(endpointID: 1, status: .init(state: .running))
+    try await Task.sleep(for: .milliseconds(200))
+    XCTAssertEqual(stack.described.value.withLock { $0 }, before)
+
+    application.update(endpointID: 1001, status: .init(state: .connected))
+    for _ in 0..<300 where await active() != false {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    let disabled = await active()
+    XCTAssertEqual(disabled, false)
   }
 
   @OcaDevice
@@ -128,8 +166,24 @@ final class SenderEnablementTests: XCTestCase {
     XCTAssertEqual(active.json?["master_enable"], true)
   }
 
-  /// A sender whose application cannot stop it is always enabled, and a request to
-  /// disable it meets the schema and the constraints but cannot be carried out: a 500.
+  /// A device that reports the change in its own time is waited for, so the activation's
+  /// response says what it did.
+  @OcaDevice
+  func testAnActivationWaitsForTheDeviceToReportTheChange() async throws {
+    let (application, stack) = try await makeStack()
+    let path = "senders/\(await stack.id(application, 1001))"
+    application.reportDelay = .milliseconds(100)
+    let response = try await stack.send(.PATCH, "\(path)/staged", [
+      "master_enable": false, "activation": ["mode": "activate_immediate"],
+    ])
+    XCTAssertEqual(response.status, .ok)
+    XCTAssertEqual(response.json?["master_enable"], false)
+    let active = try await stack.send(.GET, "\(path)/active")
+    XCTAssertEqual(active.json?["master_enable"], false)
+  }
+
+  /// A sender whose application cannot stop it refuses with NotImplemented, and a request
+  /// to disable it meets the schema and the constraints but cannot be carried out: a 500.
   @OcaDevice
   func testASenderThatCannotBeDisabledRefusesWithAServerError() async throws {
     _ = try await TestDevice.networkManager()

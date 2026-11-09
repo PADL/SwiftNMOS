@@ -32,13 +32,22 @@ extension NMOSOcaRTPAdaptation {
 
   /// The application says how an endpoint is described, and the endpoint's cast mode
   /// and AES67 adaptation data are its own; the addresses are its interfaces'. An
-  /// application that describes its streams itself may show a new one only in the status.
+  /// application that describes its streams itself may show a new one only in the status,
+  /// which also says whether a sender is enabled.
   public var observedProperties: NMOSOcaObservedProperties {
     .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 10)])
       + .of(SwiftOCADevice.OcaMediaTransportApplication.self, where: { $0 is any MediaStreamEndpointSDPRepresentable }, [
-        .init(defLevel: 3, propertyIndex: 11), // endpointStatuses
+        endpointStatusesID,
       ])
+      + .senderStatuses
       + NMOSOcaEndpoint.addressProperties
+  }
+
+  /// A sender with an active description transmits unless it is Ready: AES70-21 starts one
+  /// from there with Connect and Start (Annex, Phase 5). Connected counts as enabled, as a
+  /// started sender may wait there for its media.
+  public func isSenderEnabled(in state: OcaMediaStreamEndpointState) -> Bool {
+    state != .ready
   }
 
   private func adaptationData(of endpoint: NMOSOcaEndpoint) -> Aes67EndpointAdaptationData? {
