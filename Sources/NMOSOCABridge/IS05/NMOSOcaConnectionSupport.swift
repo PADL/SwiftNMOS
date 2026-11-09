@@ -53,7 +53,7 @@ extension NMOSConnectionError {
   /// `manifest_href`, and a receiver is patched by its transport parameters.
   static func noTransportFile(_ transport: String) -> Self {
     let name = NMOSOcaTransport.displayName(of: transport)
-    return .invalid("A \(name) receiver has no transport file; stage its `transport_params` instead")
+    return .invalid("\(name) receivers have no transport file; stage `transport_params` instead")
   }
 }
 

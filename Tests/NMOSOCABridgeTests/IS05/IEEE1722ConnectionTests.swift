@@ -126,6 +126,9 @@ final class IEEE1722ConnectionTests: XCTestCase {
     let file: NMOSJSONValue = ["data": "{}", "type": "application/json"]
     let wrong = try await stack.send(.PATCH, path, ["transport_file": file])
     XCTAssertEqual(wrong.status, .badRequest)
+    XCTAssertEqual(
+      wrong.json?["error"], "IEEE 1722 receivers have no transport file; stage `transport_params` instead"
+    )
   }
 
   @OcaDevice
