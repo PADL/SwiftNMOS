@@ -21,7 +21,8 @@ import SwiftOCADevice
 
 /// Native Dante channels (AES70-23). A receive channel is connected by naming the
 /// transmit channel it subscribes to, so those two names are its transport parameters,
-/// and a transmit channel's parameters are the names a receiver would subscribe with.
+/// and a transmit channel's parameters are the names a receiver would subscribe with
+/// (schemas/*_transport_params_dante.json).
 extension NMOSOcaDanteAdaptation {
   private static let deviceName = "device_name"
   private static let channelName = "channel_name"

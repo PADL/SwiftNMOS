@@ -66,7 +66,7 @@ final class NMOSConnectionAPITests: XCTestCase {
     ), id: receiver)
     provider.add(.init(
       kind: .receiver,
-      transportType: "urn:x-nmos:transport:dante",
+      transportType: "urn:x-padl:transport:dante",
       constraints: [["device_name": .init(), "channel_name": .init()]],
       active: .init(masterEnable: false, transportParameters: [["device_name": .null, "channel_name": .null]])
     ), id: danteReceiver)
@@ -172,7 +172,7 @@ final class NMOSConnectionAPITests: XCTestCase {
       )
     }
     let type = try await send(.GET, "v1.2/single/receivers/\(danteReceiver)/transporttype")
-    XCTAssertEqual(type.json, "urn:x-nmos:transport:dante")
+    XCTAssertEqual(type.json, "urn:x-padl:transport:dante")
     let patch = try await send(.PATCH, "v1.1/single/receivers/\(danteReceiver)/staged", ["master_enable": true])
     XCTAssertEqual(patch.status, .conflict)
   }
@@ -401,7 +401,7 @@ final class NMOSConnectionAPITests: XCTestCase {
     let listener = NMOSID(UUID())
     provider.add(.init(
       kind: .receiver,
-      transportType: "urn:x-nmos:transport:milan",
+      transportType: "urn:x-padl:transport:ieee1722",
       constraints: [[
         "entity_id": .init(pattern: "^[0-9a-f]{16}$"), "stream_index": .init(maximum: 65535, minimum: 0),
         "mode": .init(enum: ["a", "b"]),
@@ -649,7 +649,7 @@ final class NMOSConnectionAPITests: XCTestCase {
     // whatever describes the device does not know what the receiver is connected to
     await store.upsert(.receiver(.init(
       id: danteReceiver, label: "Dante Rx", description: "", deviceID: device,
-      transport: "urn:x-nmos:transport:dante", interfaceBindings: [], subscription: .init(active: false)
+      transport: "urn:x-padl:transport:dante", interfaceBindings: [], subscription: .init(active: false)
     )))
     for _ in 0..<200 {
       if await store.receivers.first(where: { $0.id == danteReceiver })?.subscription.active == true { break }
@@ -742,7 +742,7 @@ final class NMOSConnectionAPITests: XCTestCase {
     provider.writesStringsInLowerCase = true
     await store.upsert(.receiver(.init(
       id: danteReceiver, label: "Dante Rx", description: "", deviceID: device,
-      transport: "urn:x-nmos:transport:dante", interfaceBindings: [], subscription: .init(active: false)
+      transport: "urn:x-padl:transport:dante", interfaceBindings: [], subscription: .init(active: false)
     )))
     let path = "v1.2/single/receivers/\(danteReceiver)"
     let patched = try await send(.PATCH, "\(path)/staged", [

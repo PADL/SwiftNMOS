@@ -132,7 +132,7 @@ final class DanteConnectionTests: XCTestCase {
     let sender = "senders/\(await stack.id(application, 1001))"
 
     let type = try await stack.send(.GET, "\(receiver)/transporttype")
-    XCTAssertEqual(type.json, "urn:x-nmos:transport:dante")
+    XCTAssertEqual(type.json, "urn:x-padl:transport:dante")
     let idle = try await stack.send(.GET, "\(receiver)/active")
     XCTAssertEqual(idle.json?["master_enable"], false)
     XCTAssertEqual(idle.json?["transport_params"], [["device_name": .null, "channel_name": .null]])
@@ -310,5 +310,37 @@ final class DanteConnectionTests: XCTestCase {
       $0["transport_params"]?.arrayValue?.first?["device_name"] == "Console"
     }
     XCTAssertEqual(staged?["master_enable"], true)
+  }
+
+  /// The parameters and constraints served are those schemas/*_transport_params_dante.json
+  /// describe, whether the receiver is subscribed or not.
+  @OcaDevice
+  func testTheParametersMeetTheDanteSchemas() async throws {
+    let (application, stack) = try await makeStack()
+    let senderSchema = try TransportParamsSchema("sender_transport_params_dante")
+    let receiverSchema = try TransportParamsSchema("receiver_transport_params_dante")
+    let receiver = "receivers/\(await stack.id(application, 1))"
+    let sender = "senders/\(await stack.id(application, 1001))"
+
+    let talker = try await stack.send(.GET, "\(sender)/active")
+    talker.json?["transport_params"]?.arrayValue?.forEach { senderSchema.check($0) }
+    let senderConstraints = try await stack.send(.GET, "\(sender)/constraints")
+    XCTAssertEqual(senderConstraints.json?.arrayValue?.first?.objectValue.map { Set($0.keys) }, senderSchema.properties)
+
+    let constraints = try await stack.send(.GET, "\(receiver)/constraints")
+    let leg = try XCTUnwrap(constraints.json?.arrayValue?.first?.objectValue)
+    XCTAssertEqual(Set(leg.keys), receiverSchema.properties)
+    for (name, constraint) in leg {
+      XCTAssertEqual(constraint["pattern"]?.stringValue, receiverSchema.pattern(of: name))
+    }
+    let idle = try await stack.send(.GET, "\(receiver)/active")
+    idle.json?["transport_params"]?.arrayValue?.forEach { receiverSchema.check($0) }
+    let result = try await stack.send(.PATCH, "\(receiver)/staged", [
+      "master_enable": true, "activation": ["mode": "activate_immediate"],
+      "transport_params": try XCTUnwrap(talker.json?["transport_params"]),
+    ])
+    XCTAssertEqual(result.status, .ok)
+    let subscribed = try await stack.wait(for: "\(receiver)/active") { $0["master_enable"] == true }
+    subscribed?["transport_params"]?.arrayValue?.forEach { receiverSchema.check($0) }
   }
 }

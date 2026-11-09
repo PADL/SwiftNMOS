@@ -18,7 +18,7 @@ import Foundation
 import NMOS
 import SwiftOCADevice
 
-/// What the bridge needs to know about one media transport (AES67, Dante, Milan) that
+/// What the bridge needs to know about one media transport (AES67, Dante, IEEE 1722) that
 /// AES70 leaves to the adaptation: which endpoints are its, how IS-04 describes them,
 /// and how IS-05 reads and changes their connections.
 @OcaDevice

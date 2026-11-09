@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "description": "Describes the transport parameters of a Receiver of urn:x-padl:transport:ieee1722, an IEEE 1722 listener stream (a STREAM_INPUT of an IEEE 1722.1 entity; Milan is the profile presented), which is patched by binding it to a talker stream. The constraints in this schema are minimum constraints, but may be further constrained at the constraints endpoint. IEEE 1722 Receivers must support all parameters in this schema.",
+  "title": "IEEE 1722 Receiver Transport Parameters",
+  "type": "object",
+  "properties": {
+    "entity_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Entity ID of the talker the listener is bound to as IEEE 1722.1 writes an EUI-64: 16 hexadecimal digits, optionally prefixed by 0x. Senders report 16 lowercase digits; a Receiver also accepts fewer digits, with leading zeros left out. Zero is not an entity ID. A null value indicates that the listener is not bound.",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(0x)?[0-9a-fA-F]{1,16}$",
+          "not": {
+            "pattern": "^(0x)?0+$"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "stream_index": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Index of the talker's STREAM_OUTPUT descriptor. A null value indicates that the listener is not bound.",
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

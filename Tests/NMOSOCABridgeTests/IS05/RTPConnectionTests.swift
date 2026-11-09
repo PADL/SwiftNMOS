@@ -493,7 +493,7 @@ final class RTPConnectionTests: XCTestCase {
     let stack = try await ConnectionStack([application])
 
     let native = try await stack.send(.GET, "receivers/\(await stack.id(application, 1))/transporttype")
-    XCTAssertEqual(native.json, "urn:x-nmos:transport:dante")
+    XCTAssertEqual(native.json, "urn:x-padl:transport:dante")
     let path = "receivers/\(await stack.id(application, 2))"
     let rtp = try await stack.send(.GET, "\(path)/transporttype")
     XCTAssertEqual(rtp.json, "urn:x-nmos:transport:rtp")

@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "description": "Describes the transport parameters of a Receiver of urn:x-padl:transport:dante, a native Dante receive channel, which is patched by subscribing it to a transmit channel. The constraints in this schema are minimum constraints, but may be further constrained at the constraints endpoint. Dante Receivers must support all parameters in this schema.",
+  "title": "Dante Receiver Transport Parameters",
+  "type": "object",
+  "properties": {
+    "device_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Name of the Dante device whose transmit channel the receive channel subscribes to. A null value indicates that the receiver is not subscribed.",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]{1,31}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "channel_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Name of the transmit channel on that device. A null value indicates that the receiver is not subscribed.",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[^@]{1,31}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

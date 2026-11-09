@@ -19,7 +19,7 @@ import NMOS
 import SwiftOCA
 import SwiftOCADevice
 
-extension NMOSOcaMilanAdaptation {
+extension NMOSOcaIEEE1722Adaptation {
   /// A stream is named `ieee1722:<entity ID>:<unique ID>`: the entity ID as 16 lowercase
   /// hex digits, and the stream's ACMP talker or listener unique ID, which is its
   /// STREAM_OUTPUT or STREAM_INPUT index (IEEE 1722.1-2021 Clause 8.2.1).

@@ -49,11 +49,11 @@ extension NMOSOcaControlController {
 }
 
 extension NMOSConnectionError {
-  /// Dante and Milan have no transport file: IS-04 gives their senders no
+  /// Dante and IEEE 1722 have no transport file: IS-04 gives their senders no
   /// `manifest_href`, and a receiver is patched by its transport parameters.
   static func noTransportFile(_ transport: String) -> Self {
-    let name = transport.split(separator: ":").last.map { $0.prefix(1).uppercased() + $0.dropFirst() } ?? transport
-    return .invalid("A \(name) receiver takes no transport file; stage its `transport_params` instead")
+    let name = NMOSOcaTransport.displayName(of: transport)
+    return .invalid("\(name) receivers have no transport file; stage `transport_params` instead")
   }
 }
 
