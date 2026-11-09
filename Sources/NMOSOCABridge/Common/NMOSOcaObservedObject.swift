@@ -27,11 +27,7 @@ public struct NMOSOcaObservedProperties: Sendable {
     /// Whether an object is of the Swift class, as several may share one class ID.
     let matches: @Sendable (SwiftOCADevice.OcaRoot) -> Bool
     let properties: Set<OcaPropertyID>
-    /// What a change to `properties` must change to count; nil, when any change counts.
-    var digest: Digest?
   }
-
-  typealias Digest = @Sendable @OcaDevice (SwiftOCADevice.OcaRoot) -> AnyHashable
 
   let entries: [Entry]
 
@@ -48,19 +44,6 @@ public struct NMOSOcaObservedProperties: Sendable {
     )])
   }
 
-  /// The properties of `T` that are read for what `digest` gives of it, so that a change
-  /// to them counts only when that changes.
-  public static func of<T: SwiftOCADevice.OcaRoot>(
-    _: T.Type,
-    _ properties: Set<OcaPropertyID>,
-    changing digest: @escaping @Sendable @OcaDevice (T) -> AnyHashable
-  ) -> NMOSOcaObservedProperties {
-    NMOSOcaObservedProperties(entries: [Entry(
-      classID: T.classID, matches: { $0 is T }, properties: properties,
-      digest: { ($0 as? T).map(digest) ?? AnyHashable(0) }
-    )])
-  }
-
   public static func + (lhs: NMOSOcaObservedProperties, rhs: NMOSOcaObservedProperties) -> NMOSOcaObservedProperties {
     NMOSOcaObservedProperties(entries: lhs.entries + rhs.entries)
   }
@@ -69,23 +52,8 @@ public struct NMOSOcaObservedProperties: Sendable {
   /// and zero for an object of a class nobody declares.
   func properties(of object: SwiftOCADevice.OcaRoot) -> (properties: Set<OcaPropertyID>, level: OcaUint16) {
     let matching = entries.filter { $0.matches(object) }
-    let whole = matching.filter { $0.digest == nil }
-      .reduce(into: Set<OcaPropertyID>()) { $0.formUnion($1.properties) }
     // properties above the deepest class declared are a subclass's
-    return (whole, matching.map(\.classID.defLevel).max() ?? 0)
-  }
-
-  /// The digests of the object's properties that are read for one, but for those read whole.
-  func digests(of object: SwiftOCADevice.OcaRoot) -> [OcaPropertyID: [Digest]] {
-    let whole = properties(of: object).properties
-    var digests = [OcaPropertyID: [Digest]]()
-    for entry in entries where entry.matches(object) {
-      guard let digest = entry.digest else { continue }
-      for id in entry.properties where !whole.contains(id) {
-        digests[id, default: []].append(digest)
-      }
-    }
-    return digests
+    return (matching.reduce(into: []) { $0.formUnion($1.properties) }, matching.map(\.classID.defLevel).max() ?? 0)
   }
 }
 
@@ -194,9 +162,6 @@ final class NMOSOcaObservedObject {
   /// Properties above this level are a subclass's, which may be read by an adaptation
   /// this knows nothing of, so a change to one counts.
   private let knownLevel: OcaUint16
-  /// The properties read for a digest of them, and the digests as last described.
-  private let digests: [OcaPropertyID: [NMOSOcaObservedProperties.Digest]]
-  private var described: [OcaPropertyID: [AnyHashable]]
   /// Kept while the object is watched, as it is what the device tells of a change.
   private let observer: NMOSOcaObserver
   private let changes: AsyncStream<OcaPropertyID>
@@ -206,19 +171,13 @@ final class NMOSOcaObservedObject {
   init(_ object: SwiftOCADevice.OcaRoot, observing properties: NMOSOcaObservedProperties, by observer: NMOSOcaObserver) async {
     self.object = object
     (self.properties, knownLevel) = properties.properties(of: object)
-    digests = properties.digests(of: object)
-    described = digests.mapValues { $0.map { $0(object) } }
     self.observer = observer
     changes = await observer.changes(for: object)
   }
 
-  /// Whether a changed property is one the bridge reads: wholly, or for a digest that changed.
+  /// Whether a changed property is one the bridge reads.
   func isChange(_ id: OcaPropertyID) -> Bool {
-    if properties.contains(id) || id.defLevel > knownLevel { return true }
-    guard let digest = digests[id]?.map({ $0(object) }), digest != described[id]
-    else { return false }
-    described[id] = digest
-    return true
+    properties.contains(id) || id.defLevel > knownLevel
   }
 
   /// Calls `changed` for each change the bridge would see, until it answers false, when

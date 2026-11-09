@@ -30,15 +30,13 @@ extension NMOSOcaIEEE1722Adaptation {
   // MARK: Reading
 
   /// The application and its endpoints say which are claimed; a listener's binding is
-  /// its session, found through the application's agents, and a talker's enablement is
-  /// its endpoint status.
+  /// its session, found through the application's agents.
   public var observedProperties: NMOSOcaObservedProperties {
     .of(SwiftOCADevice.OcaMediaTransportApplication.self, [
       .init(defLevel: 2, propertyIndex: 4), // adaptationIdentifier
       .init(defLevel: 3, propertyIndex: 10), // endpoints
       .init(defLevel: 3, propertyIndex: 13), // transportSessionControlAgentONos
     ]) + .of(SwiftOCADevice.OcaMediaTransportSessionAgent.self, [.init(defLevel: 3, propertyIndex: 2)])
-      + .senderStatuses
   }
 
   /// The session agent holding the session for an input endpoint. AES70-22 gives each

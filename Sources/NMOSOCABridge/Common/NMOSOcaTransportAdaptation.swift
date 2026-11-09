@@ -83,21 +83,6 @@ public protocol NMOSOcaTransportAdaptation: Sendable {
   func isSenderEnabled(in state: OcaMediaStreamEndpointState) -> Bool
 }
 
-/// `OcaMediaTransportApplication.EndpointStatuses`, where a sender's state shows.
-let endpointStatusesID = OcaPropertyID(defLevel: 3, propertyIndex: 11)
-
-extension NMOSOcaObservedProperties {
-  /// The states of an application's senders, on which their `master_enable` depends; a
-  /// change to a receiver's alone is not one.
-  static let senderStatuses = NMOSOcaObservedProperties.of(
-    SwiftOCADevice.OcaMediaTransportApplication.self, [endpointStatusesID]
-  ) { application in
-    AnyHashable(application.endpoints.filter { $0.direction == .output }.map {
-      application.endpointStatuses[$0.idInternal]?.state
-    })
-  }
-}
-
 public extension NMOSOcaTransportAdaptation {
   /// An endpoint of a transport that gives it no name of its own is named by the node.
   func nativeIdentity(of endpoint: NMOSOcaEndpoint) async -> String? { nil }
@@ -166,10 +151,10 @@ public extension NMOSOcaTransportAdaptation {
     try await enableSender(endpoint, staged.masterEnable)
   }
 
-  /// Starts or stops a sending endpoint with ApplyEndpointCommand Start or Stop, then gives
-  /// its status a moment to show the change. A refusal fails as its status says: Locked is
-  /// 423, a parameter error 400, and NotImplemented (an application that cannot) or any other
-  /// 500, as IS-05 answers a request that meets the schema and the constraints.
+  /// Starts or stops a sending endpoint with ApplyEndpointCommand Start or Stop. A refusal
+  /// fails as its status says: Locked is 423, a parameter error 400, and NotImplemented (an
+  /// application that cannot) or any other 500, as IS-05 answers a request that meets the
+  /// schema and the constraints.
   func enableSender(_ endpoint: NMOSOcaEndpoint, _ enabled: Bool) async throws {
     do {
       try await endpoint.application.applyEndpointCommand(
@@ -180,27 +165,5 @@ public extension NMOSOcaTransportAdaptation {
     } catch {
       throw NMOSConnectionError(error)
     }
-    await settleSender(endpoint, on: enabled)
-  }
-
-  /// A device may report the change in its own time; wait for it to show, so that what is
-  /// read back after an activation is the result of that activation.
-  private func settleSender(_ endpoint: NMOSOcaEndpoint, on enabled: Bool) async {
-    guard isSenderEnabled(endpoint) != enabled else { return }
-    await withTaskGroup(of: Void.self) { group in
-      group.addTask { await self.observeSender(endpoint, until: enabled) }
-      group.addTask { try? await Task.sleep(for: .seconds(2)) }
-      await group.next()
-      group.cancelAll()
-    }
-  }
-
-  /// Returns once the endpoint's status shows `enabled`, or the application is gone.
-  private func observeSender(_ endpoint: NMOSOcaEndpoint, until enabled: Bool) async {
-    do {
-      for try await id in endpoint.application.propertyChanges where id == endpointStatusesID {
-        if isSenderEnabled(endpoint) == enabled { return }
-      }
-    } catch {}
   }
 }

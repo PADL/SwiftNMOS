@@ -34,12 +34,10 @@ extension NMOSOcaDanteAdaptation {
 
   // MARK: Reading
 
-  /// A sender is named by the device and enabled as its endpoint status says; a channel
-  /// is read from its channel endpoint.
+  /// A sender is named by the device; a channel is read from its channel endpoint.
   public var observedProperties: NMOSOcaObservedProperties {
     .of(SwiftOCADevice.OcaDeviceManager.self, [.init(defLevel: 3, propertyIndex: 4)])
       + .of(SwiftOCADevice.DanteOcaMediaTransportApplication.self, [Self.channelEndpointsID])
-      + .senderStatuses
   }
 
   private func streamEndpointID(of channel: OcaChannelEndpoint) -> OcaMediaStreamEndpointID? {

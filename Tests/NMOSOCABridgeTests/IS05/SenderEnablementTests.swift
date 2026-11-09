@@ -29,8 +29,6 @@ final class TestStoppableApplication: SwiftOCADevice.OcaMediaTransportApplicatio
   var calls = [(id: OcaMediaStreamEndpointID, command: OcaMediaStreamEndpointCommand)]()
   /// When set, the device refuses the command.
   var refusal: OcaStatus?
-  /// When set, the device reports the new state only after this long.
-  var reportDelay: Duration?
 
   override func applyEndpointCommand(
     endpointID id: OcaMediaStreamEndpointID,
@@ -40,12 +38,7 @@ final class TestStoppableApplication: SwiftOCADevice.OcaMediaTransportApplicatio
     calls.append((id, command))
     if let refusal { throw Ocp1Error.status(refusal) }
     guard command == .start || command == .stop else { throw Ocp1Error.status(.notImplemented) }
-    let status = OcaMediaStreamEndpointStatus(state: command == .stop ? .connected : .ready)
-    guard let reportDelay else { return update(endpointID: id, status: status) }
-    Task { @OcaDevice in
-      try? await Task.sleep(for: reportDelay)
-      self.update(endpointID: id, status: status)
-    }
+    update(endpointID: id, status: .init(state: command == .stop ? .connected : .ready))
   }
 }
 
@@ -123,35 +116,6 @@ final class SenderEnablementTests: XCTestCase {
     XCTAssertEqual(active.json?["master_enable"], false)
   }
 
-  /// A sender's state is observed, so a stop made elsewhere reaches IS-04 without the host
-  /// describing the device; a receiver's state alone does not describe it again.
-  @OcaDevice
-  func testAStopMadeElsewhereReachesIS04() async throws {
-    let (application, stack) = try await makeStack()
-    application.insert(
-      endpoint: OcaMediaStreamEndpoint(idInternal: 1, direction: .input),
-      status: .init(state: .ready)
-    )
-    let sender = await stack.id(application, 1001)
-    func active() async -> Bool? {
-      await stack.store.senders.first { $0.id == sender }?.subscription.active
-    }
-    for _ in 0..<300 where await stack.store.receivers.isEmpty {
-      try await Task.sleep(for: .milliseconds(10))
-    }
-    let before = stack.described.value.withLock { $0 }
-    application.update(endpointID: 1, status: .init(state: .running))
-    try await Task.sleep(for: .milliseconds(200))
-    XCTAssertEqual(stack.described.value.withLock { $0 }, before)
-
-    application.update(endpointID: 1001, status: .init(state: .connected))
-    for _ in 0..<300 where await active() != false {
-      try await Task.sleep(for: .milliseconds(10))
-    }
-    let disabled = await active()
-    XCTAssertEqual(disabled, false)
-  }
-
   @OcaDevice
   func testARefusalByTheDeviceLeavesTheSenderAsItWas() async throws {
     let (application, stack) = try await makeStack()
@@ -164,22 +128,6 @@ final class SenderEnablementTests: XCTestCase {
     XCTAssertEqual(status4, .internalServerError)
     let active = try await stack.send(.GET, "\(path)/active")
     XCTAssertEqual(active.json?["master_enable"], true)
-  }
-
-  /// A device that reports the change in its own time is waited for, so the activation's
-  /// response says what it did.
-  @OcaDevice
-  func testAnActivationWaitsForTheDeviceToReportTheChange() async throws {
-    let (application, stack) = try await makeStack()
-    let path = "senders/\(await stack.id(application, 1001))"
-    application.reportDelay = .milliseconds(100)
-    let response = try await stack.send(.PATCH, "\(path)/staged", [
-      "master_enable": false, "activation": ["mode": "activate_immediate"],
-    ])
-    XCTAssertEqual(response.status, .ok)
-    XCTAssertEqual(response.json?["master_enable"], false)
-    let active = try await stack.send(.GET, "\(path)/active")
-    XCTAssertEqual(active.json?["master_enable"], false)
   }
 
   /// A sender whose application cannot stop it refuses with NotImplemented, and a request
