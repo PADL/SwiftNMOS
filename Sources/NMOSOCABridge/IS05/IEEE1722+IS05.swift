@@ -73,7 +73,7 @@ extension NMOSOcaIEEE1722Adaptation {
   public func active(of endpoint: NMOSOcaEndpoint) async throws -> NMOSConnectionState {
     if endpoint.isSender {
       let own = try? endpoint.endpoint.idExternal.decode(MilanMediaStreamEndpointIDExternal.self)
-      return NMOSConnectionState(masterEnable: true, transportParameters: [Self.parameters(own)])
+      return NMOSConnectionState(masterEnable: isSenderEnabled(endpoint), transportParameters: [Self.parameters(own)])
     }
     guard let session = try? await sessionAgent(of: endpoint)?.session(endpoint.endpoint.idInternal) else {
       return NMOSConnectionState(masterEnable: false, transportParameters: [Self.parameters(nil)])

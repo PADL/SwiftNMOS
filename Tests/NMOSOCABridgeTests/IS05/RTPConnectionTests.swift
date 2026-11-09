@@ -164,7 +164,9 @@ final class RTPConnectionTests: XCTestCase {
     let disabled = try await stack.send(.PATCH, "\(path)/staged", [
       "master_enable": false, "activation": ["mode": "activate_immediate"],
     ])
-    XCTAssertEqual(disabled.status, .badRequest)
+    // an application that cannot stop its senders refuses, as IS-05 has a request that
+    // meets the schema and constraints but cannot be carried out refused
+    XCTAssertEqual(disabled.status, .internalServerError)
     // re-activating what it is already doing is allowed
     let same = try await stack.send(.PATCH, "\(path)/staged", [
       "transport_params": [["destination_ip": "239.0.0.1"]], "activation": ["mode": "activate_immediate"],

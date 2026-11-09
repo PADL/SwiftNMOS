@@ -24,6 +24,17 @@ An [AMWA NMOS](https://specs.amwa.tv/nmos/) node in Swift, and a bridge that pre
 The specifications followed are IS-04 v1.3, IS-05 v1.1 and v1.2, IS-12 v1.0 and
 MS-05-02 v1.0.
 
+### Enabling and disabling senders
+
+A sender's stream is set up outside NMOS, so its transport parameters are fixed by its
+constraints, but IS-05 `master_enable` starts and stops its transmission where the media
+transport application adopts `NMOSOcaSenderEnabling`. AES70 has no method for this in
+every adaptation (AES70-22 has none for IEEE 1722.1 START_STREAMING and STOP_STREAMING on
+a STREAM_OUTPUT), so the host supplies it. `/active` reports what the application says.
+A sender whose application does not adopt it is always enabled, and an activation that
+would change that fails with 500: the request meets the schema and the constraints
+(`master_enable` has none), which IS-05 answers with 500 when it cannot be carried out.
+
 ## Transports
 
 Dante and IEEE 1722 are not in AMWA's register of transports, and `urn:x-nmos:` is AMWA's
