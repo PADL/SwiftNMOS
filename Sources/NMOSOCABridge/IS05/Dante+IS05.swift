@@ -72,7 +72,7 @@ extension NMOSOcaDanteAdaptation {
   public func active(of endpoint: NMOSOcaEndpoint) async throws -> NMOSConnectionState {
     if endpoint.isSender {
       let device = await endpoint.application.deviceDelegate?.deviceManager?.deviceName ?? ""
-      return NMOSConnectionState(masterEnable: true, transportParameters: [[
+      return NMOSConnectionState(masterEnable: isSenderEnabled(endpoint), transportParameters: [[
         Self.deviceName: .string(device), Self.channelName: .string(ownChannelName(of: endpoint)),
       ]])
     }

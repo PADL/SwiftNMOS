@@ -87,7 +87,8 @@ extension NMOSOcaRTPAdaptation {
     }
     // with one leg there is nothing for this to say that `master_enable` does not
     parameters["rtp_enabled"] = true
-    return NMOSConnectionState(masterEnable: sdp != nil, transportParameters: [parameters])
+    let enabled = sdp != nil && (!endpoint.isSender || isSenderEnabled(endpoint))
+    return NMOSConnectionState(masterEnable: enabled, transportParameters: [parameters])
   }
 
   /// What a receiver's parameters are when it receives the described stream; with no
