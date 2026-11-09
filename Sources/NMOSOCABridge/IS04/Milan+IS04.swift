@@ -14,7 +14,6 @@
 // limitations under the License.
 //
 
-
 import Foundation
 import NMOS
 import SwiftOCA
@@ -26,15 +25,19 @@ extension NMOSOcaMilanAdaptation {
   private static let streamOutput: UInt16 = 0x0006
 
   /// A stream is named by its entity ID, descriptor type and descriptor index, which
-  /// IEEE 1722.1-2021 Clause 7.2 makes unique and the entity keeps for its life.
+  /// together are unique to it and which the entity keeps for its life.
   public func nativeIdentity(of endpoint: NMOSOcaEndpoint) async -> String? {
     guard let own = try? endpoint.endpoint.idExternal.decode(MilanMediaStreamEndpointIDExternal.self)
     else { return nil }
     let application = try? endpoint.application.adaptationData.decode(MilanMediaTransportAdaptationData.self)
     let entity = own.entityID != 0 ? own.entityID : application?.entityID ?? 0
     guard entity != 0 else { return nil }
-    let hex = String(entity, radix: 16)
-    let type = String(endpoint.isSender ? Self.streamOutput : Self.streamInput, radix: 16)
-    return "ieee1722/\(String(repeating: "0", count: 16 - hex.count) + hex)/000\(type)/\(own.streamIndex)"
+    let type = endpoint.isSender ? Self.streamOutput : Self.streamInput
+    return "ieee1722/\(Self.hex(entity, digits: 16))/\(Self.hex(type, digits: 4))/\(own.streamIndex)"
+  }
+
+  private static func hex(_ value: some BinaryInteger, digits: Int) -> String {
+    let text = String(value, radix: 16)
+    return String(repeating: "0", count: max(0, digits - text.count)) + text
   }
 }
