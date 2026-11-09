@@ -48,11 +48,13 @@ final class ConnectionStack {
   /// How often the bridge has described the device.
   nonisolated let described = Counter()
   private var tasks = [Task<Void, Never>]()
+  private let adaptations: NMOSOcaAdaptations
 
   init(
     _ applications: [SwiftOCADevice.OcaMediaTransportApplication],
     adaptations: NMOSOcaAdaptations = .standard
   ) async throws {
+    self.adaptations = adaptations
     try await TestDevice.networkManager().networkApplications = applications
     bridge = NMOSOcaBridge(store: store, adaptations: adaptations) { [described] in
       described.value.withLock { $0 += 1 }
@@ -65,8 +67,8 @@ final class ConnectionStack {
 
   deinit { tasks.forEach { $0.cancel() } }
 
-  func id(_ application: SwiftOCADevice.OcaMediaTransportApplication, _ endpoint: OcaMediaStreamEndpointID) -> NMOSID {
-    Self.ids.id(endpoint >= 1000 ? .sender : .receiver, application: application.objectNumber, endpoint: endpoint)
+  func id(_ application: SwiftOCADevice.OcaMediaTransportApplication, _ endpoint: OcaMediaStreamEndpointID) async -> NMOSID {
+    await TestDevice.id(endpoint >= 1000 ? .sender : .receiver, application, endpoint, in: Self.ids, adaptations: adaptations)
   }
 
   func send(

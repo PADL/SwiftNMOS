@@ -48,10 +48,6 @@ public struct NMOSOcaEndpoint: Sendable {
   public var isSender: Bool { endpoint.direction == .output }
 
   public var kind: NMOSResourceKind { isSender ? .sender : .receiver }
-
-  public func id(_ kind: NMOSResourceKind, in ids: NMOSOcaResourceIDs) -> NMOSID {
-    ids.id(kind, application: application.objectNumber, endpoint: endpoint.idInternal)
-  }
 }
 
 /// Finds the device's media transport applications, network interfaces and stream

@@ -121,7 +121,7 @@ final class RTPConnectionTests: XCTestCase {
   func testAnUnconfiguredReceiverPresentsDefaults() async throws {
     let application = try await makeApplication()
     let stack = try await ConnectionStack([application])
-    let path = "receivers/\(stack.id(application, 1))"
+    let path = "receivers/\(await stack.id(application, 1))"
 
     let type = try await stack.send(.GET, "\(path)/transporttype")
     XCTAssertEqual(type.json, "urn:x-nmos:transport:rtp")
@@ -143,7 +143,7 @@ final class RTPConnectionTests: XCTestCase {
   func testASenderIsDescribedByItsActiveDescriptionAndCannotBeChanged() async throws {
     let application = try await makeApplication()
     let stack = try await ConnectionStack([application])
-    let path = "senders/\(stack.id(application, 1001))"
+    let path = "senders/\(await stack.id(application, 1001))"
 
     let active = try await stack.send(.GET, "\(path)/active")
     XCTAssertEqual(active.json?["master_enable"], true)
@@ -177,7 +177,7 @@ final class RTPConnectionTests: XCTestCase {
   func testATransportFileIsPassedToConfigureEndpointFromSDP() async throws {
     let application = try await makeApplication()
     let stack = try await ConnectionStack([application])
-    let path = "receivers/\(stack.id(application, 1))"
+    let path = "receivers/\(await stack.id(application, 1))"
 
     let staged = try await stack.send(.PATCH, "\(path)/staged", [
       "transport_file": ["data": .string(Self.sourceSpecific), "type": "application/sdp"],
@@ -217,7 +217,7 @@ final class RTPConnectionTests: XCTestCase {
     // an ST 2022-7 pair: the receiver takes the first leg, named by its a=mid
     let leg = Self.sourceSpecific.components(separatedBy: "m=audio")
     let file = leg[0] + "m=audio" + leg[1] + "a=mid:primary\r\n" + "m=audio" + leg[1] + "a=mid:secondary\r\n"
-    let result = try await stack.send(.PATCH, "receivers/\(stack.id(application, 1))/staged", [
+    let result = try await stack.send(.PATCH, "receivers/\(await stack.id(application, 1))/staged", [
       "master_enable": true, "activation": ["mode": "activate_immediate"],
       "transport_file": ["data": .string(file), "type": "application/sdp"],
     ])
@@ -233,7 +233,7 @@ final class RTPConnectionTests: XCTestCase {
     let stack = try await ConnectionStack([application])
     let leg = Self.sourceSpecific.components(separatedBy: "m=audio")
     let file = leg[0] + "m=audio" + leg[1] + "a=mid:1\r\n" + "m=audio" + leg[1] + "a=mid:1\r\n"
-    let result = try await stack.send(.PATCH, "receivers/\(stack.id(application, 1))/staged", [
+    let result = try await stack.send(.PATCH, "receivers/\(await stack.id(application, 1))/staged", [
       "master_enable": true, "activation": ["mode": "activate_immediate"],
       "transport_file": ["data": .string(file), "type": "application/sdp"],
     ])
@@ -251,7 +251,7 @@ final class RTPConnectionTests: XCTestCase {
     let pair = leg[0] + "m=audio" + leg[1] + "a=mid:p\r\n" + "m=audio" + second + "a=mid:s\r\n"
     // another controller selects the second leg
     try application.setActiveSDP(pair, endpoint: 1, mediaIDType: .mid, mediaID: "s")
-    let active = try await stack.send(.GET, "receivers/\(stack.id(application, 1))/active")
+    let active = try await stack.send(.GET, "receivers/\(await stack.id(application, 1))/active")
     XCTAssertEqual(active.json?["transport_params"]?.arrayValue?.first?["multicast_ip"], "232.21.21.134")
   }
 
@@ -262,7 +262,7 @@ final class RTPConnectionTests: XCTestCase {
     let leg = Self.sourceSpecific.components(separatedBy: "m=audio")
     // a first media description that is not linear PCM is passed over
     let file = leg[0] + "m=video 5000 RTP/AVP 96\r\n" + "m=audio" + leg[1]
-    let result = try await stack.send(.PATCH, "receivers/\(stack.id(application, 1))/staged", [
+    let result = try await stack.send(.PATCH, "receivers/\(await stack.id(application, 1))/staged", [
       "master_enable": true, "activation": ["mode": "activate_immediate"],
       "transport_file": ["data": .string(file), "type": "application/sdp"],
     ])
@@ -295,7 +295,7 @@ final class RTPConnectionTests: XCTestCase {
   func testParametersTakePrecedenceOverTheTransportFile() async throws {
     let application = try await makeApplication()
     let stack = try await ConnectionStack([application])
-    let result = try await stack.send(.PATCH, "receivers/\(stack.id(application, 1))/staged", [
+    let result = try await stack.send(.PATCH, "receivers/\(await stack.id(application, 1))/staged", [
       "master_enable": true, "activation": ["mode": "activate_immediate"],
       "transport_file": ["data": .string(Self.sourceSpecific), "type": "application/sdp"],
       "transport_params": [["multicast_ip": "232.20.44.7", "destination_port": 6000]],
@@ -315,7 +315,7 @@ final class RTPConnectionTests: XCTestCase {
   func testParametersAloneAreMadeIntoADescription() async throws {
     let application = try await makeApplication()
     let stack = try await ConnectionStack([application])
-    let result = try await stack.send(.PATCH, "receivers/\(stack.id(application, 1))/staged", [
+    let result = try await stack.send(.PATCH, "receivers/\(await stack.id(application, 1))/staged", [
       "master_enable": true, "activation": ["mode": "activate_immediate"],
       "transport_params": [["multicast_ip": "239.10.20.30", "destination_port": 5006, "interface_ip": "auto"]],
     ])
@@ -330,7 +330,7 @@ final class RTPConnectionTests: XCTestCase {
     XCTAssertEqual(sdp.direction, .receiveOnly)
 
     // a unicast stream is addressed to the receiver's own interface
-    let unicast = try await stack.send(.PATCH, "receivers/\(stack.id(application, 1))/staged", [
+    let unicast = try await stack.send(.PATCH, "receivers/\(await stack.id(application, 1))/staged", [
       "activation": ["mode": "activate_immediate"],
       "transport_params": [["multicast_ip": .null, "interface_ip": "192.168.1.20"]],
     ])
@@ -344,7 +344,7 @@ final class RTPConnectionTests: XCTestCase {
   func testDisablingAReceiverClearsItsSubscription() async throws {
     let application = try await makeApplication()
     let stack = try await ConnectionStack([application])
-    let path = "receivers/\(stack.id(application, 1))"
+    let path = "receivers/\(await stack.id(application, 1))"
     _ = try await stack.send(.PATCH, "\(path)/staged", [
       "master_enable": true, "activation": ["mode": "activate_immediate"],
       "transport_file": ["data": .string(Self.multicast), "type": "application/sdp"],
@@ -362,7 +362,7 @@ final class RTPConnectionTests: XCTestCase {
   func testFilesAndFailuresTheDeviceRefuses() async throws {
     let application = try await makeApplication()
     let stack = try await ConnectionStack([application])
-    let path = "receivers/\(stack.id(application, 1))/staged"
+    let path = "receivers/\(await stack.id(application, 1))/staged"
 
     // video is not something an audio receiver can be staged with
     let video = "v=0\r\no=- 1 1 IN IP4 10.0.0.1\r\ns=x\r\nc=IN IP4 239.1.1.1/32\r\nt=0 0\r\nm=video 5000 RTP/AVP 96\r\na=rtpmap:96 raw/90000\r\n"
@@ -391,7 +391,7 @@ final class RTPConnectionTests: XCTestCase {
   func testAChangeMadeThroughOCAReachesActiveAndIS04() async throws {
     let application = try await makeApplication()
     let stack = try await ConnectionStack([application])
-    let receiver = stack.id(application, 1)
+    let receiver = await stack.id(application, 1)
     await stack.store.upsert(.receiver(.init(
       id: receiver, label: "Rx 1", description: "", deviceID: ConnectionStack.ids.device,
       transport: "urn:x-nmos:transport:rtp", interfaceBindings: [], subscription: .init(active: false)
@@ -423,7 +423,7 @@ final class RTPConnectionTests: XCTestCase {
     let stack = try await ConnectionStack([application])
     let bridge = stack.bridge
     await bridge.describe()
-    let receiver = stack.id(application, 1)
+    let receiver = await stack.id(application, 1)
     let peer = NMOSID(UUID(version5: "peer", namespace: NMOSOcaResourceIDs.namespace))
 
     let patched = try await stack.send(.PATCH, "receivers/\(receiver)/staged", [
@@ -467,7 +467,7 @@ final class RTPConnectionTests: XCTestCase {
       TestDevice.interfaceAssignment(address: "192.168.2.20"),
     ]
     let stack = try await ConnectionStack([application])
-    let path = "receivers/\(stack.id(application, 1))"
+    let path = "receivers/\(await stack.id(application, 1))"
     let peer = NMOSID(UUID(version5: "peer", namespace: NMOSOcaResourceIDs.namespace))
     let result = try await stack.send(.PATCH, "\(path)/staged", [
       "sender_id": .string(peer.description), "master_enable": true, "activation": ["mode": "activate_immediate"],
@@ -490,9 +490,9 @@ final class RTPConnectionTests: XCTestCase {
     application.insert(endpoint: OcaMediaStreamEndpoint(idInternal: 2, direction: .input, currentStreamMode: Self.mode))
     let stack = try await ConnectionStack([application])
 
-    let native = try await stack.send(.GET, "receivers/\(stack.id(application, 1))/transporttype")
+    let native = try await stack.send(.GET, "receivers/\(await stack.id(application, 1))/transporttype")
     XCTAssertEqual(native.json, "urn:x-nmos:transport:dante")
-    let path = "receivers/\(stack.id(application, 2))"
+    let path = "receivers/\(await stack.id(application, 2))"
     let rtp = try await stack.send(.GET, "\(path)/transporttype")
     XCTAssertEqual(rtp.json, "urn:x-nmos:transport:rtp")
 

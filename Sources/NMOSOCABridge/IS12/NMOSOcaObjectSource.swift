@@ -190,14 +190,11 @@ public final class NMOSOcaObjectSource: NcObjectSource {
       return [NcTouchpoint(resourceType: "node", id: ids.node)]
     }
     guard let application = object as? SwiftOCADevice.OcaMediaTransportApplication else { return nil }
-    var touchpoints = [NcTouchpoint]()
-    for endpoint in application.endpoints {
-      let endpoint = NMOSOcaEndpoint(application: application, endpoint: endpoint)
-      let id = endpoint.id(endpoint.kind, in: ids)
-      // only endpoints the bridge describes are IS-04 resources
-      guard bridge.endpoints[.init(kind: endpoint.kind, id: id)] != nil else { continue }
-      touchpoints.append(NcTouchpoint(resourceType: endpoint.isSender ? "sender" : "receiver", id: id))
-    }
+    // only endpoints the bridge describes are IS-04 resources
+    let touchpoints = bridge.endpoints
+      .filter { $0.value.endpoint.application === application }
+      .sorted { $0.value.endpoint.endpoint.idInternal < $1.value.endpoint.endpoint.idInternal }
+      .map { NcTouchpoint(resourceType: $0.key.kind == .sender ? "sender" : "receiver", id: $0.key.id) }
     return touchpoints.isEmpty ? nil : touchpoints
   }
 

@@ -93,13 +93,14 @@ final class ConnectionProviderClaimTests: XCTestCase {
     try await Task.sleep(for: .milliseconds(300))
     let listed = try await stack.send(.GET, "receivers")
     XCTAssertEqual(listed.json?.arrayValue?.count, Self.endpoints)
+    // the ID is found through the adaptation, which asks a claim of its own
+    let path = "receivers/\(await stack.id(application, 7))"
     let settled = counting.claimsAsked
 
     // nothing has changed, so listing again asks nothing, where it used to ask about
     // every endpoint once for each endpoint; nor does reading an endpoint
     let again = try await stack.send(.GET, "receivers")
     XCTAssertEqual(again.json, listed.json)
-    let path = "receivers/\(stack.id(application, 7))"
     for resource in ["constraints", "staged", "active", "transporttype"] {
       let result = try await stack.send(.GET, "\(path)/\(resource)")
       XCTAssertEqual(result.status, .ok, resource)
@@ -117,7 +118,7 @@ final class ConnectionProviderClaimTests: XCTestCase {
     application.insert(endpoint: OcaMediaStreamEndpoint(idInternal: 100, direction: .input))
     _ = try await stack.wait(for: "receivers") { $0.arrayValue?.count == Self.endpoints + 1 }
     try await Task.sleep(for: .milliseconds(300))
-    let added = try await stack.send(.GET, "receivers/\(stack.id(application, 100))/active")
+    let added = try await stack.send(.GET, "receivers/\(await stack.id(application, 100))/active")
     XCTAssertEqual(added.status, .ok)
     let changed = counting.claimsAsked
     XCTAssertGreaterThan(changed, settled)

@@ -89,8 +89,8 @@ final class MilanConnectionTests: XCTestCase {
   @OcaDevice
   func testStreamsAreConnectionsOfTheMilanTransport() async throws {
     let (application, _, stack) = try await makeStack()
-    let receiver = "receivers/\(stack.id(application, 1))"
-    let sender = "senders/\(stack.id(application, 1001))"
+    let receiver = "receivers/\(await stack.id(application, 1))"
+    let sender = "senders/\(await stack.id(application, 1001))"
 
     let type = try await stack.send(.GET, "\(receiver)/transporttype")
     XCTAssertEqual(type.json, "urn:x-nmos:transport:milan")
@@ -110,10 +110,10 @@ final class MilanConnectionTests: XCTestCase {
   @OcaDevice
   func testAListenerIsPatchedByTheTalkersParameters() async throws {
     let (application, agent, stack) = try await makeStack()
-    let sender = stack.id(application, 1001)
+    let sender = await stack.id(application, 1001)
     let talker = try await stack.send(.GET, "senders/\(sender)/active")
     let parameters = try XCTUnwrap(talker.json?["transport_params"])
-    let path = "receivers/\(stack.id(application, 1))/staged"
+    let path = "receivers/\(await stack.id(application, 1))/staged"
     let result = try await stack.send(.PATCH, path, [
       "sender_id": .string(sender.description), "master_enable": true,
       "activation": ["mode": "activate_immediate"], "transport_params": parameters,
@@ -131,7 +131,7 @@ final class MilanConnectionTests: XCTestCase {
   @OcaDevice
   func testAPatchBindsWithConfigureConnectionAndStartsTheStream() async throws {
     let (application, agent, stack) = try await makeStack()
-    let path = "receivers/\(stack.id(application, 1))"
+    let path = "receivers/\(await stack.id(application, 1))"
     let result = try await stack.send(.PATCH, "\(path)/staged", [
       "master_enable": true, "activation": ["mode": "activate_immediate"],
       "transport_params": [["entity_id": "001122fffe334455", "stream_index": 3]],
@@ -160,7 +160,7 @@ final class MilanConnectionTests: XCTestCase {
   @OcaDevice
   func testAnUnboundListenersStagedParametersCanBeSentBack() async throws {
     let (application, agent, stack) = try await makeStack()
-    let path = "receivers/\(stack.id(application, 1))/staged"
+    let path = "receivers/\(await stack.id(application, 1))/staged"
     let staged = try await stack.send(.GET, path)
     XCTAssertEqual(staged.json?["transport_params"], [["entity_id": .null, "stream_index": .null]])
     // controllers PATCH the whole of what they read, with their one change in it
@@ -175,7 +175,7 @@ final class MilanConnectionTests: XCTestCase {
   @OcaDevice
   func testAnEntityIDWrittenAnotherWayIsStillTheBindingTheClientMade() async throws {
     let (application, agent, stack) = try await makeStack()
-    let path = "receivers/\(stack.id(application, 1))"
+    let path = "receivers/\(await stack.id(application, 1))"
     let peer = NMOSID(UUID(version5: "talker", namespace: NMOSOcaResourceIDs.namespace))
     let result = try await stack.send(.PATCH, "\(path)/staged", [
       "sender_id": .string(peer.description), "master_enable": true, "activation": ["mode": "activate_immediate"],
@@ -194,7 +194,7 @@ final class MilanConnectionTests: XCTestCase {
   @OcaDevice
   func testParametersThatNameNoTalkerAreRefused() async throws {
     let (application, agent, stack) = try await makeStack()
-    let path = "receivers/\(stack.id(application, 1))/staged"
+    let path = "receivers/\(await stack.id(application, 1))/staged"
     for parameters: NMOSJSONValue in [
       ["entity_id": "not hexadecimal"], ["stream_index": 70000], ["stream_index": -1],
     ] {
@@ -211,7 +211,7 @@ final class MilanConnectionTests: XCTestCase {
   @OcaDevice
   func testABindingMadeByAnATDECCControllerReachesActive() async throws {
     let (application, agent, stack) = try await makeStack()
-    let path = "receivers/\(stack.id(application, 1))"
+    let path = "receivers/\(await stack.id(application, 1))"
     _ = try await stack.send(.GET, "\(path)/active")
     // the session agent is a separate object from the application, and is observed too
     try agent.update(

@@ -63,4 +63,15 @@ final class NMOSOcaResourceIDsTests: XCTestCase {
       XCTAssertTrue("89ab".contains(fields[3].first!))
     }
   }
+
+  func testEachResourceOfANativeEndpointHasItsOwnID() {
+    var seen = Set<NMOSID>()
+    for kind in [NMOSResourceKind.source, .flow, .sender, .receiver] {
+      for native in ["ieee1722/001122fffe334455/0006/0", "ieee1722/001122fffe334455/0006/1", "dante/Stage/Left"] {
+        let id = NMOSOcaResourceIDs.id(kind, native: native)
+        XCTAssertTrue(seen.insert(id).inserted, "\(kind) \(native)")
+        XCTAssertEqual(id.description.split(separator: "-")[2].first, "5")
+      }
+    }
+  }
 }

@@ -21,6 +21,27 @@ An [AMWA NMOS](https://specs.amwa.tv/nmos/) node in Swift, and a bridge that pre
   AES70 object as an MS-05-02 object, with native NMOS classes where one applies. See
   [`Sources/NMOSOCABridge/IS12/README.md`](Sources/NMOSOCABridge/IS12/README.md).
 
+### Resource IDs
+
+The bridge derives every ID as a UUIDv5, so the same device gives the same IDs after every
+restart. The node and device are named from the host's seed (a MAC address or serial
+number). A sender, receiver, flow or source is named from its transport's own name for
+the endpoint, in the fixed namespace `2a72491d-cc4b-42a3-8690-bd91e5a856d5`, so any node
+presenting the same native endpoint gives it the same ID:
+
+| Transport | Native name |
+|---|---|
+| IEEE 1722 (Milan) | `ieee1722/<entity ID, 16 hex digits>/<descriptor type>/<index>`: STREAM_OUTPUT `0006` for a sender, STREAM_INPUT `0005` for a receiver |
+| Dante | `dante/<device name>/<channel name>` |
+| RTP (AES67) | none: named from the node, the application and the endpoint |
+
+AES70-23 exposes no Dante device ID that survives a rename, so renaming a Dante device or
+channel makes its senders, receivers, flows and sources new resources: the old ones are
+removed and new ones registered, and a controller connects them again. A Milan entity ID
+is fixed for the entity's life (IEEE 1722.1-2021 ADP `entity_id`). An RTP endpoint has no
+name that outlives its session, so it stays node-seeded. IS-04 lets one node register a
+resource, so only the node that owns an endpoint should present it to a registry.
+
 The specifications followed are IS-04 v1.3, IS-05 v1.1 and v1.2, IS-12 v1.0 and
 MS-05-02 v1.0.
 
