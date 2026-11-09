@@ -66,7 +66,7 @@ public protocol NMOSOcaTransportAdaptation: Sendable {
 
   /// Applies the settings to a receiving endpoint through the application's AES70
   /// methods. Throws `NMOSConnectionError`; the new state is read back from the device
-  /// afterwards. A sender takes only the enablement it already has.
+  /// afterwards. A sender is enabled and disabled through `NMOSOcaSenderEnabling`.
   func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws
 }
 
@@ -109,11 +109,30 @@ public extension NMOSOcaTransportAdaptation {
     return try await active(of: endpoint).transportParameters.map { $0.mapValues { .fixed($0) } }
   }
 
+  /// Whether a sending endpoint's transmission is enabled: as its application says, if it
+  /// adopts `NMOSOcaSenderEnabling`, else always.
+  func isSenderEnabled(_ endpoint: NMOSOcaEndpoint) -> Bool {
+    (endpoint.application as? NMOSOcaSenderEnabling)?.isSenderEnabled(endpoint.endpoint.idInternal) ?? true
+  }
+
   func activate(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
     guard endpoint.isSender else { return try await activateReceiver(endpoint, staged: staged) }
-    // the constraints admit only what the sender is already doing
-    guard try await staged.masterEnable == active(of: endpoint).masterEnable else {
-      throw NMOSConnectionError.invalid("This sender is enabled and disabled where its stream is set up")
+    // a sender's parameters are fixed by its constraints, so only the enablement can change
+    guard try await staged.masterEnable != active(of: endpoint).masterEnable else { return }
+    try await enableSender(endpoint, staged.masterEnable)
+  }
+
+  /// Starts or stops a sending endpoint's transmission. A sender whose application cannot
+  /// fails with a 500: IS-05 gives that to a request that meets the schema and the
+  /// constraints but cannot be carried out, and `master_enable` has no constraint.
+  func enableSender(_ endpoint: NMOSOcaEndpoint, _ enabled: Bool) async throws {
+    guard let application = endpoint.application as? NMOSOcaSenderEnabling else {
+      throw NMOSConnectionError.failed("This sender cannot be \(enabled ? "enabled" : "disabled") through IS-05")
+    }
+    do {
+      try await application.setSenderEnabled(endpoint.endpoint.idInternal, enabled)
+    } catch {
+      throw NMOSConnectionError(error)
     }
   }
 }
