@@ -98,18 +98,24 @@ follows that change too.
 
 AES70-21 Clause 10.2.4 has `ConfigureEndpointFromSDP` configure a receiver and leave it
 Ready, without starting it; the controller then starts it with `ApplyEndpointCommand`.
-An RTP receiver's activation does the same:
+An RTP receiver's activation does the same. The description is the staged transport file,
+or one made from the staged parameters, and a receiver that already has it is not
+configured again, so re-asserting a running receiver does not interrupt it:
 
-- With `master_enable` true, the receiver is configured from what is staged, then
-  started with Start.
-- With `master_enable` false and a transport file staged, it is configured only, and
-  left Ready. Disabling a running receiver this way stops it.
-- With `master_enable` false and no transport file, it is configured with an empty
-  description, which closes its connection (NotReady).
+- With `master_enable` true, the receiver is configured, then started with Start.
+- With `master_enable` false, a running receiver is stopped with Stop and configured if
+  the description changed, so it ends Ready on what is staged.
+- With `master_enable` false and nothing staged that names a stream (no transport file,
+  multicast group or source), it is configured with an empty description, which closes
+  its connection (NotReady).
 
-An AES67 receiver with an active description is disabled while Ready. Any other
-application describes a receiver's stream only once the receiver is started. A refused
-Start is answered as a sender's refusal is.
+A device that refuses Start or Stop `NotImplemented` streams once configured, as before
+AES70-21: its Start counts as done, and disabling it closes its connection instead. Any
+other refused Start fails the activation as a sender's refusal does, and leaves the
+receiver configured and Ready.
+
+An AES67 receiver with an active description is disabled while Ready, or while it has no
+status. Any other application describes a receiver's stream only once it is started.
 
 ## Example
 
