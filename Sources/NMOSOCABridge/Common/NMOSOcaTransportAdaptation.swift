@@ -153,19 +153,28 @@ public extension NMOSOcaTransportAdaptation {
 
   /// Starts or stops a sending endpoint with ApplyEndpointCommand Start or Stop.
   func enableSender(_ endpoint: NMOSOcaEndpoint, _ enabled: Bool) async throws {
-    try await apply(enabled ? .start : .stop, to: endpoint)
+    try await applyEndpointCommand(enabled ? .start : .stop, to: endpoint)
   }
 
-  /// Applies an ApplyEndpointCommand to the endpoint. A refusal fails as its status says:
-  /// Locked is 423, a parameter error 400, and NotImplemented (an application that cannot)
-  /// or any other 500, as IS-05 answers a request that meets the schema and the constraints.
-  func apply(_ command: OcaMediaStreamEndpointCommand, to endpoint: NMOSOcaEndpoint) async throws {
+  /// Applies an ApplyEndpointCommand to the endpoint; false if the application refused it
+  /// NotImplemented and `unlessNotImplemented` is set. Any other refusal fails as its status
+  /// says: Locked is 423, a parameter error 400, and NotImplemented or any other 500, as
+  /// IS-05 answers a request that meets the schema and the constraints.
+  @discardableResult
+  func applyEndpointCommand(
+    _ command: OcaMediaStreamEndpointCommand,
+    to endpoint: NMOSOcaEndpoint,
+    unlessNotImplemented: Bool = false
+  ) async throws -> Bool {
     do {
       try await endpoint.application.applyEndpointCommand(
         endpointID: endpoint.endpoint.idInternal,
         command: command,
         from: NMOSOcaControlController.connection
       )
+      return true
+    } catch Ocp1Error.status(.notImplemented) where unlessNotImplemented {
+      return false
     } catch {
       throw NMOSConnectionError(error)
     }

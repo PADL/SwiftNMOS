@@ -74,7 +74,10 @@ final class MockAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
     update(endpointID: id, status: .init(state: .ready))
   }
 
-  /// A configured receiver runs on Start and is Ready again on Stop.
+  /// A receiver's commands, as CM4 has them: Connect leaves a configured receiver Connected
+  /// and Start runs it; Stop leaves it Ready; Disconnect and StopAndDisconnect close its
+  /// connection, NotReady with no description. A command that changes nothing is a no-op;
+  /// one that needs a description the receiver lacks is refused InvalidRequest.
   override func applyEndpointCommand(
     endpointID id: OcaMediaStreamEndpointID,
     command: OcaMediaStreamEndpointCommand,
@@ -84,15 +87,26 @@ final class MockAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
     guard endpoint.direction == .input else {
       return try await super.applyEndpointCommand(endpointID: id, command: command, from: controller)
     }
-    let data = try? endpoint.adaptationData.decode(Aes67EndpointAdaptationData.self)
-    guard let data, !data.activeSDP.isEmpty else { throw Ocp1Error.status(.invalidRequest) }
+    let configured = (try? endpoint.adaptationData.decode(Aes67EndpointAdaptationData.self))?.activeSDP.isEmpty == false
+    let state = try endpointStatus(id).state
     switch command {
-    case .start, .connectAndStart:
-      update(endpointID: id, status: .init(state: .running))
-    case .stop, .stopAndDisconnect, .disconnect:
+    case .none:
+      break
+    case .setReady, .connect, .start, .connectAndStart:
+      guard configured else { throw Ocp1Error.status(.invalidRequest) }
+      let target: OcaMediaStreamEndpointState = switch command {
+      case .setReady: .ready
+      case .connect: state == .running ? .running : .connected
+      default: .running
+      }
+      update(endpointID: id, status: .init(state: target))
+    case .stop:
+      guard state == .running || state == .connected else { break }
       update(endpointID: id, status: .init(state: .ready))
-    default:
-      throw Ocp1Error.status(.notImplemented)
+    case .disconnect, .stopAndDisconnect:
+      guard configured else { break }
+      try setActiveSDP("", endpoint: id)
+      update(endpointID: id, status: .init(state: .notReady))
     }
   }
 
