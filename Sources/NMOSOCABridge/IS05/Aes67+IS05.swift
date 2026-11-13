@@ -22,7 +22,8 @@ import SwiftOCADevice
 /// RTP endpoints are connected by exchanging SDP. An AES67 application carries the
 /// active description in its endpoints' adaptation data and takes a new one through
 /// ConfigureEndpointFromSDP; any other application does both through
-/// `MediaStreamEndpointSDPRepresentable`.
+/// `MediaStreamEndpointSDPRepresentable`. Either leaves a receiver Ready, and
+/// ApplyEndpointCommand starts it (AES70-21 §10.2.4).
 extension NMOSOcaRTPAdaptation {
   /// RFC 3551's default RTP port, for an endpoint that has not been given one.
   private static let defaultPort: Int64 = 5004
@@ -32,10 +33,13 @@ extension NMOSOcaRTPAdaptation {
 
   /// The application says how an endpoint is described, and the endpoint's cast mode
   /// and AES67 adaptation data are its own; the addresses are its interfaces'. An
-  /// application that describes its streams itself may show a new one only in the status.
+  /// application that describes its streams itself may show a new one only in the status,
+  /// and an AES67 application shows a receiver started only there.
   public var observedProperties: NMOSOcaObservedProperties {
     .of(SwiftOCADevice.OcaMediaTransportApplication.self, [.init(defLevel: 3, propertyIndex: 10)])
-      + .of(SwiftOCADevice.OcaMediaTransportApplication.self, where: { $0 is any MediaStreamEndpointSDPRepresentable }, [
+      + .of(SwiftOCADevice.OcaMediaTransportApplication.self, where: {
+        $0 is any MediaStreamEndpointSDPRepresentable || $0 is SwiftOCADevice.Aes67OcaMediaTransportApplication
+      }, [
         .init(defLevel: 3, propertyIndex: 11), // endpointStatuses
       ])
       + NMOSOcaEndpoint.addressProperties
@@ -46,6 +50,14 @@ extension NMOSOcaRTPAdaptation {
   /// started sender may wait there for its media.
   public func isSenderEnabled(in state: OcaMediaStreamEndpointState) -> Bool {
     state != .ready
+  }
+
+  /// A receiver with an active description receives unless it is Ready, where
+  /// ConfigureEndpointFromSDP leaves an AES67 endpoint until it is started (AES70-21
+  /// §10.2.4). Any other application describes a receiver's stream only once it is started.
+  private func isReceiverEnabled(_ endpoint: NMOSOcaEndpoint) -> Bool {
+    guard adaptationData(of: endpoint) != nil else { return true }
+    return (try? endpoint.application.endpointStatus(endpoint.endpoint.idInternal).state) != .ready
   }
 
   private func adaptationData(of endpoint: NMOSOcaEndpoint) -> Aes67EndpointAdaptationData? {
@@ -94,7 +106,7 @@ extension NMOSOcaRTPAdaptation {
     }
     // with one leg there is nothing for this to say that `master_enable` does not
     parameters["rtp_enabled"] = true
-    let enabled = sdp != nil && (!endpoint.isSender || isSenderEnabled(endpoint))
+    let enabled = sdp != nil && (endpoint.isSender ? isSenderEnabled(endpoint) : isReceiverEnabled(endpoint))
     return NMOSConnectionState(masterEnable: enabled, transportParameters: [parameters])
   }
 
@@ -158,12 +170,18 @@ extension NMOSOcaRTPAdaptation {
 
   // MARK: Activation
 
+  /// The receiver is configured from what is staged, which leaves it Ready (AES70-21
+  /// §10.2.4), then started with ApplyEndpointCommand Start if `master_enable` is true.
+  /// Disabled with no transport file staged, it is configured with no description instead,
+  /// which closes its connection (NotReady).
   public func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
-    guard staged.masterEnable else {
+    guard staged.masterEnable || staged.transportFile?.data != nil else {
       return try await configure(endpoint, Selection(sdpString: ""))
     }
     let parameters = staged.transportParameters.first ?? [:]
     try await configure(endpoint, description(for: endpoint, staged: staged, parameters))
+    guard staged.masterEnable else { return }
+    try await apply(.start, to: endpoint)
   }
 
   /// A ConfigureEndpointFromSDP call's description and the media description it selects.

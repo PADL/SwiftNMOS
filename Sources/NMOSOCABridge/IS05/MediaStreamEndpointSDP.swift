@@ -25,12 +25,13 @@ import SwiftOCADevice
 @OcaDevice
 public protocol MediaStreamEndpointSDPRepresentable: SwiftOCADevice.OcaMediaTransportApplication {
   /// The description of the stream the endpoint sends or receives, empty when it carries
-  /// no stream.
+  /// no stream; an input configured but not started receives none.
   func getActiveSDP(_ id: OcaMediaStreamEndpointID) async throws -> OcaSDPString
 
-  /// Subscribes an input endpoint to the media description of the description that
-  /// `mediaIDType` and `mediaID` select (AES70-21 §10.2.4, `MediaStreamSDP.selectStream`);
-  /// an empty description clears the subscription.
+  /// Configures an input endpoint from the media description of the description that
+  /// `mediaIDType` and `mediaID` select (`MediaStreamSDP.selectStream`) and leaves it Ready,
+  /// not started, as AES70-21 §10.2.4 has ConfigureEndpointFromSDP do: ApplyEndpointCommand
+  /// Start starts it. An empty description closes any connection (NotReady).
   func configureEndpointFromSDP(
     endpointID: OcaMediaStreamEndpointID,
     sdpString: OcaSDPString,

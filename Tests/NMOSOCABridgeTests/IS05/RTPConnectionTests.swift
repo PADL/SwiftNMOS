@@ -22,8 +22,9 @@ import SwiftOCA
 import SwiftOCADevice
 import XCTest
 
-/// An AES67 application as a device implements it: an endpoint configured from a
-/// description then reports that description as its active one.
+/// An AES67 application as a device implements it (AES70-21 §10.2.4): an endpoint
+/// configured from a description reports it as its active one and is Ready, Start runs
+/// it, and an empty description leaves it NotReady.
 final class TestAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplication {
   var configured = [(
     id: OcaMediaStreamEndpointID,
@@ -31,7 +32,9 @@ final class TestAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
     mediaIDType: Aes67MediaIDType,
     mediaID: OcaString
   )]()
+  var commands = [(id: OcaMediaStreamEndpointID, command: OcaMediaStreamEndpointCommand)]()
   var refusal: OcaStatus?
+  var startRefusal: OcaStatus?
 
   override func configureEndpointFromSDP(
     endpointID id: OcaMediaStreamEndpointID,
@@ -43,6 +46,20 @@ final class TestAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
     if let refusal { throw Ocp1Error.status(refusal) }
     configured.append((id, sdpString, mediaIDType, mediaID))
     try setActiveSDP(sdpString, endpoint: id, mediaIDType: mediaIDType, mediaID: mediaID)
+    update(endpointID: id, status: .init(state: sdpString.isEmpty ? .notReady : .ready))
+  }
+
+  override func applyEndpointCommand(
+    endpointID id: OcaMediaStreamEndpointID,
+    command: OcaMediaStreamEndpointCommand,
+    from controller: any OcaController
+  ) async throws {
+    guard try endpoint(id).direction == .input else {
+      return try await super.applyEndpointCommand(endpointID: id, command: command, from: controller)
+    }
+    if let startRefusal, command == .start { throw Ocp1Error.status(startRefusal) }
+    commands.append((id, command))
+    update(endpointID: id, status: .init(state: command == .start ? .running : .ready))
   }
 
   /// What the device would do on being patched by another controller.
@@ -64,10 +81,11 @@ final class TestAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
 }
 
 /// A Dante application whose even-numbered channels are carried by AES67 flows, which
-/// it describes and takes as SDP.
+/// it describes and accepts as SDP: a description is held until Start receives it.
 final class TestDanteAes67Application: SwiftOCADevice.DanteOcaMediaTransportApplication,
   MediaStreamEndpointSDPRepresentable
 {
+  var held = [OcaMediaStreamEndpointID: OcaSDPString]()
   var active = [OcaMediaStreamEndpointID: OcaSDPString]()
 
   func getActiveSDP(_ id: OcaMediaStreamEndpointID) async throws -> OcaSDPString { active[id] ?? "" }
@@ -79,7 +97,17 @@ final class TestDanteAes67Application: SwiftOCADevice.DanteOcaMediaTransportAppl
     mediaID: OcaString,
     from controller: any OcaController
   ) async throws {
-    active[id] = sdpString
+    held[id] = sdpString
+    active[id] = nil
+  }
+
+  override func applyEndpointCommand(
+    endpointID id: OcaMediaStreamEndpointID,
+    command: OcaMediaStreamEndpointCommand,
+    from controller: any OcaController
+  ) async throws {
+    guard command == .start, let sdp = held[id] else { throw Ocp1Error.status(.notImplemented) }
+    active[id] = sdp
   }
 
   func usesSessionDescription(_ id: OcaMediaStreamEndpointID) async -> Bool { id % 2 == 0 }
@@ -213,6 +241,9 @@ final class RTPConnectionTests: XCTestCase {
     XCTAssertEqual(activated.status, .ok)
     XCTAssertEqual(application.configured.count, 1)
     XCTAssertEqual(application.configured.first?.id, 1)
+    // configured, then started (AES70-21 §10.2.4)
+    XCTAssertEqual(application.commands.map(\.command), [.start])
+    XCTAssertEqual(application.endpointStatuses[1]?.state, .running)
     // the device is given the description exactly as the sender published it
     XCTAssertEqual(application.configured.first?.sdp, Self.sourceSpecific)
     // a single media description needs no identifier (AES70-21 §10.2.4)
@@ -357,8 +388,38 @@ final class RTPConnectionTests: XCTestCase {
     XCTAssertFalse(second.isMulticast)
   }
 
+  /// With `master_enable` false the receiver is configured and left Ready, not started.
   @OcaDevice
-  func testDisablingAReceiverClearsItsSubscription() async throws {
+  func testAReceiverActivatedDisabledIsConfiguredButNotStarted() async throws {
+    let application = try await makeApplication()
+    let stack = try await ConnectionStack([application])
+    let path = "receivers/\(await stack.id(application, 1))"
+    let result = try await stack.send(.PATCH, "\(path)/staged", [
+      "master_enable": false, "activation": ["mode": "activate_immediate"],
+      "transport_file": ["data": .string(Self.multicast), "type": "application/sdp"],
+    ])
+    XCTAssertEqual(result.status, .ok)
+    XCTAssertEqual(application.configured.map(\.sdp), [Self.multicast])
+    XCTAssertTrue(application.commands.isEmpty)
+    XCTAssertEqual(application.endpointStatuses[1]?.state, .ready)
+    let active = try await stack.send(.GET, "\(path)/active")
+    XCTAssertEqual(active.json?["master_enable"], false)
+
+    // enabling it afterwards configures it again and starts it
+    let enabled = try await stack.send(.PATCH, "\(path)/staged", [
+      "master_enable": true, "activation": ["mode": "activate_immediate"],
+    ])
+    XCTAssertEqual(enabled.status, .ok)
+    XCTAssertEqual(application.configured.map(\.sdp), [Self.multicast, Self.multicast])
+    XCTAssertEqual(application.commands.map(\.command), [.start])
+    let running = try await stack.send(.GET, "\(path)/active")
+    XCTAssertEqual(running.json?["master_enable"], true)
+  }
+
+  /// Disabling a running receiver whose transport file is still staged leaves it
+  /// configured and Ready; disabling it with no transport file closes its connection.
+  @OcaDevice
+  func testDisablingAReceiverStopsItAndANullFileClearsIt() async throws {
     let application = try await makeApplication()
     let stack = try await ConnectionStack([application])
     let path = "receivers/\(await stack.id(application, 1))"
@@ -366,13 +427,39 @@ final class RTPConnectionTests: XCTestCase {
       "master_enable": true, "activation": ["mode": "activate_immediate"],
       "transport_file": ["data": .string(Self.multicast), "type": "application/sdp"],
     ])
+    XCTAssertEqual(application.endpointStatuses[1]?.state, .running)
     let disabled = try await stack.send(.PATCH, "\(path)/staged", [
       "master_enable": false, "activation": ["mode": "activate_immediate"],
     ])
     XCTAssertEqual(disabled.status, .ok)
+    XCTAssertEqual(application.configured.last?.sdp, Self.multicast)
+    XCTAssertEqual(application.endpointStatuses[1]?.state, .ready)
+    let stopped = try await stack.send(.GET, "\(path)/active")
+    XCTAssertEqual(stopped.json?["master_enable"], false)
+
+    let cleared = try await stack.send(.PATCH, "\(path)/staged", [
+      "master_enable": false, "activation": ["mode": "activate_immediate"],
+      "transport_file": ["data": .null, "type": .null],
+    ])
+    XCTAssertEqual(cleared.status, .ok)
     XCTAssertEqual(application.configured.last?.sdp, "")
-    let active = try await stack.send(.GET, "\(path)/active")
-    XCTAssertEqual(active.json?["master_enable"], false)
+    XCTAssertEqual(application.endpointStatuses[1]?.state, .notReady)
+    XCTAssertEqual(application.commands.map(\.command), [.start])
+  }
+
+  /// A refused Start fails the activation as its status says, the receiver left Ready.
+  @OcaDevice
+  func testARefusedStartFailsTheActivation() async throws {
+    let application = try await makeApplication()
+    let stack = try await ConnectionStack([application])
+    application.startRefusal = .notImplemented
+    let result = try await stack.send(.PATCH, "receivers/\(await stack.id(application, 1))/staged", [
+      "master_enable": true, "activation": ["mode": "activate_immediate"],
+      "transport_file": ["data": .string(Self.multicast), "type": "application/sdp"],
+    ])
+    XCTAssertEqual(result.status, .internalServerError)
+    XCTAssertEqual(application.configured.count, 1)
+    XCTAssertEqual(application.endpointStatuses[1]?.state, .ready)
   }
 
   @OcaDevice
@@ -414,8 +501,12 @@ final class RTPConnectionTests: XCTestCase {
       transport: "urn:x-nmos:transport:rtp", interfaceBindings: [], subscription: .init(active: false)
     )))
 
-    // another controller patches the receiver with AES70-21 ConfigureEndpointFromSDP
+    // another controller patches the receiver with AES70-21 ConfigureEndpointFromSDP,
+    // which leaves it Ready, then starts it
     try await application.configureEndpointFromSDP(endpointID: 1, sdpString: Self.multicast, mediaIDType: .none, mediaID: "", from: TestController())
+    let ready = try await stack.send(.GET, "receivers/\(receiver)/active")
+    XCTAssertEqual(ready.json?["master_enable"], false)
+    try await application.applyEndpointCommand(endpointID: 1, command: .start, from: TestController())
     let active = try await stack.wait(for: "receivers/\(receiver)/active") { $0["master_enable"] == true }
     XCTAssertEqual(active?["transport_params"]?.arrayValue?.first?["multicast_ip"], "239.0.0.1")
     XCTAssertEqual(active?["sender_id"], .null)
@@ -451,9 +542,9 @@ final class RTPConnectionTests: XCTestCase {
     let connected = await stack.store.receivers.first { $0.id == receiver }
     XCTAssertEqual(connected?.subscription, .init(senderID: peer, active: true))
 
-    // the stream has yet to arrive, so the endpoint is subscribed without being connected;
+    // the stream has yet to arrive, so the started endpoint waits for it, Connected;
     // IS-04 says what IS-05 does, and the bridge leaves the sender the client named
-    XCTAssertEqual(application.endpointStatuses[1]?.state, .notReady)
+    application.update(endpointID: 1, status: .init(state: .connected))
     var relabelled = try application.endpoint(1)
     relabelled.userLabel = "Stage left"
     try application.update(endpoint: relabelled)

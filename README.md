@@ -90,8 +90,26 @@ senders say nothing in advance and refuse a disable with 500:
 
 The bridge does not observe sender states beyond what it already reads. A stop made by
 another controller reaches `/active` at once, and IS-04 the next time the device is
-described. An RTP application that describes its streams itself is the exception: its
-status is observed, so IS-04 follows that change too.
+described. An RTP application is the exception: an AES67 application's statuses, and
+those of an application that describes its streams itself, are observed, so IS-04
+follows that change too.
+
+### Activating RTP receivers
+
+AES70-21 Clause 10.2.4 has `ConfigureEndpointFromSDP` configure a receiver and leave it
+Ready, without starting it; the controller then starts it with `ApplyEndpointCommand`.
+An RTP receiver's activation does the same:
+
+- With `master_enable` true, the receiver is configured from what is staged, then
+  started with Start.
+- With `master_enable` false and a transport file staged, it is configured only, and
+  left Ready. Disabling a running receiver this way stops it.
+- With `master_enable` false and no transport file, it is configured with an empty
+  description, which closes its connection (NotReady).
+
+An AES67 receiver with an active description is disabled while Ready. Any other
+application describes a receiver's stream only once the receiver is started. A refused
+Start is answered as a sender's refusal is.
 
 ## Example
 
