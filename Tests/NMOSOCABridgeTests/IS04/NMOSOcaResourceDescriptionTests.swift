@@ -90,7 +90,7 @@ private struct TestTransports {
     aes67.insert(endpoint: OcaMediaStreamEndpoint(
       idInternal: 1, direction: .input, networkAssignmentIDs: [1], streamModeCapabilityIDs: [1],
       clockONo: mediaClock.objectNumber
-    ), status: .init(state: .ready))
+    ), status: .init(state: .notReady))
 
     let dante = try await SwiftOCADevice.DanteOcaMediaTransportApplication(role: Self.role("Dante"), deviceDelegate: device)
     self.dante = dante
@@ -122,9 +122,10 @@ private struct TestTransports {
   }
 }
 
-/// An application that describes its streams itself and, when configured, changes only
-/// an endpoint's status, as a transport without AES67 adaptation data does.
+/// An application that describes its streams itself and, when configured and started,
+/// changes only an endpoint's status, as a transport without AES67 adaptation data does.
 private final class SDPApplication: SwiftOCADevice.OcaMediaTransportApplication, MediaStreamEndpointSDPRepresentable {
+  private var held = [OcaMediaStreamEndpointID: OcaSDPString]()
   private var active = [OcaMediaStreamEndpointID: OcaSDPString]()
 
   func getActiveSDP(_ id: OcaMediaStreamEndpointID) async throws -> OcaSDPString { active[id] ?? "" }
@@ -136,8 +137,19 @@ private final class SDPApplication: SwiftOCADevice.OcaMediaTransportApplication,
     mediaID: OcaString,
     from controller: any OcaController
   ) async throws {
-    active[id] = sdpString
-    endpointStatuses[id] = .init(state: sdpString.isEmpty ? .ready : .running)
+    held[id] = sdpString
+    active[id] = nil
+    endpointStatuses[id] = .init(state: sdpString.isEmpty ? .notReady : .ready)
+  }
+
+  override func applyEndpointCommand(
+    endpointID id: OcaMediaStreamEndpointID,
+    command: OcaMediaStreamEndpointCommand,
+    from controller: any OcaController
+  ) async throws {
+    guard command == .start, let sdp = held[id], !sdp.isEmpty else { throw Ocp1Error.status(.invalidRequest) }
+    active[id] = sdp
+    endpointStatuses[id] = .init(state: .running)
   }
 
   func usesSessionDescription(_ id: OcaMediaStreamEndpointID) async -> Bool { true }
@@ -160,10 +172,12 @@ extension NMOSOcaResourceDescriptionTests {
     let idle = await store.receivers.first { $0.id == receiverID }
     XCTAssertEqual(idle?.subscription.active, false)
 
-    // a controller patches the receiver through the application, which shows only in its status
+    // a controller patches the receiver through the application and starts it, which shows
+    // only in its status
     try await application.configureEndpointFromSDP(
       endpointID: 1, sdpString: TestTransports.stream, mediaIDType: .none, mediaID: "", from: TestController()
     )
+    try await application.applyEndpointCommand(endpointID: 1, command: .start, from: TestController())
     try await waitFor("the receiver is active") {
       await store.receivers.first { $0.id == receiverID }?.subscription.active == true
     }
@@ -495,10 +509,12 @@ final class NMOSOcaResourceDescriptionTests: XCTestCase {
     let before = await store.resource(.receiver, id: receiverID)
     let senderBefore = await store.resource(.sender, id: senderID)
 
-    // another controller subscribes the receiver, which shows in its adaptation data
+    // another controller configures the receiver, which shows in its adaptation data, and
+    // starts it, which shows in its status
     var subscribed = try transports.aes67.endpoint(1)
     subscribed.adaptationData = try Aes67EndpointAdaptationData(activeSDP: TestTransports.stream).blob
     try transports.aes67.update(endpoint: subscribed)
+    transports.aes67.update(endpointID: 1, status: .init(state: .running))
     try await waitFor("the receiver is active") {
       await store.receivers.first { $0.id == receiverID }?.subscription.active == true
     }

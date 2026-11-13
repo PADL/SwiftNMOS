@@ -19,9 +19,9 @@ import SwiftOCA
 import SwiftOCADevice
 
 /// An AES67 application that moves no audio but behaves as a device's would: a sender
-/// describes its stream as SDP, and a receiver configured from a description then
-/// reports that description as its active one. The RTP adaptation presents it through
-/// IS-05's `urn:x-nmos:transport:rtp`.
+/// describes its stream as SDP, and a receiver configured from a description reports
+/// that description as its active one and is Ready until started (AES70-21 §10.2.4).
+/// The RTP adaptation presents it through IS-05's `urn:x-nmos:transport:rtp`.
 final class MockAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplication {
   private static let mode = OcaMediaStreamMode(
     frameFormat: .rtp, encodingType: "audio/L24", samplingRate: 48000, channelCount: 2, packetTime: 1e-3
@@ -65,9 +65,35 @@ final class MockAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
     from controller: any OcaController
   ) async throws {
     // an empty description closes the connection and selects nothing
-    guard !sdpString.isEmpty else { return try setActiveSDP("", endpoint: id) }
+    guard !sdpString.isEmpty else {
+      try setActiveSDP("", endpoint: id)
+      return update(endpointID: id, status: .init(state: .notReady))
+    }
     _ = try MediaStreamSDP.selectStream(in: sdpString, mediaIDType: mediaIDType, mediaID: mediaID)
     try setActiveSDP(sdpString, endpoint: id, mediaIDType: mediaIDType, mediaID: mediaID)
+    update(endpointID: id, status: .init(state: .ready))
+  }
+
+  /// A configured receiver runs on Start and is Ready again on Stop.
+  override func applyEndpointCommand(
+    endpointID id: OcaMediaStreamEndpointID,
+    command: OcaMediaStreamEndpointCommand,
+    from controller: any OcaController
+  ) async throws {
+    let endpoint = try endpoint(id)
+    guard endpoint.direction == .input else {
+      return try await super.applyEndpointCommand(endpointID: id, command: command, from: controller)
+    }
+    let data = try? endpoint.adaptationData.decode(Aes67EndpointAdaptationData.self)
+    guard let data, !data.activeSDP.isEmpty else { throw Ocp1Error.status(.invalidRequest) }
+    switch command {
+    case .start, .connectAndStart:
+      update(endpointID: id, status: .init(state: .running))
+    case .stop, .stopAndDisconnect, .disconnect:
+      update(endpointID: id, status: .init(state: .ready))
+    default:
+      throw Ocp1Error.status(.notImplemented)
+    }
   }
 
   /// What a device does once a stream is set up: the endpoint reports its description.

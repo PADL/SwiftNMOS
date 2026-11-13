@@ -151,15 +151,19 @@ public extension NMOSOcaTransportAdaptation {
     try await enableSender(endpoint, staged.masterEnable)
   }
 
-  /// Starts or stops a sending endpoint with ApplyEndpointCommand Start or Stop. A refusal
-  /// fails as its status says: Locked is 423, a parameter error 400, and NotImplemented (an
-  /// application that cannot) or any other 500, as IS-05 answers a request that meets the
-  /// schema and the constraints.
+  /// Starts or stops a sending endpoint with ApplyEndpointCommand Start or Stop.
   func enableSender(_ endpoint: NMOSOcaEndpoint, _ enabled: Bool) async throws {
+    try await apply(enabled ? .start : .stop, to: endpoint)
+  }
+
+  /// Applies an ApplyEndpointCommand to the endpoint. A refusal fails as its status says:
+  /// Locked is 423, a parameter error 400, and NotImplemented (an application that cannot)
+  /// or any other 500, as IS-05 answers a request that meets the schema and the constraints.
+  func apply(_ command: OcaMediaStreamEndpointCommand, to endpoint: NMOSOcaEndpoint) async throws {
     do {
       try await endpoint.application.applyEndpointCommand(
         endpointID: endpoint.endpoint.idInternal,
-        command: enabled ? .start : .stop,
+        command: command,
         from: NMOSOcaControlController.connection
       )
     } catch {
