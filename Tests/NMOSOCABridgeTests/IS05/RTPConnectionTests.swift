@@ -24,10 +24,11 @@ import XCTest
 
 /// An AES67 application as a device implements it (AES70-21 §10.2.4): an endpoint
 /// configured from a description reports it as its active one and is Ready, Start runs
-/// it, Stop leaves it Ready, and an empty description leaves it NotReady. Configuring a
-/// running endpoint with the description it runs keeps it running, as devices do; one that
-/// stops a running endpoint counts an interruption. A `lateStatus` one reports a command's
-/// status only after a moment.
+/// it, Connect and Stop leave it Connected, StopAndDisconnect Ready, and an empty description
+/// leaves it NotReady. Configuring a running endpoint with the description it runs keeps it
+/// running, as devices do; one that stops a running endpoint counts an interruption. A
+/// `lateStatus` one reports a command's status only after a moment. Senders accept commands
+/// if `sendersStart`.
 final class TestAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplication {
   var configured = [(
     id: OcaMediaStreamEndpointID,
@@ -43,6 +44,7 @@ final class TestAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
   var stopRefusal: OcaStatus?
   var lateStatus = false
   var interruptions = 0
+  var sendersStart = false
 
   override func configureEndpointFromSDP(
     endpointID id: OcaMediaStreamEndpointID,
@@ -66,7 +68,7 @@ final class TestAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
     command: OcaMediaStreamEndpointCommand,
     from controller: any OcaController
   ) async throws {
-    guard try endpoint(id).direction == .input else {
+    guard try endpoint(id).direction == .input || sendersStart else {
       return try await super.applyEndpointCommand(endpointID: id, command: command, from: controller)
     }
     let starts = command == .start || command == .connectAndStart
@@ -75,10 +77,18 @@ final class TestAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
       nextStartRefusal = nil
       throw Ocp1Error.status(refusal)
     }
-    if let stopRefusal, command == .stop { throw Ocp1Error.status(stopRefusal) }
+    let stops = [.stop, .stopAndDisconnect, .disconnect, .setReady].contains(command)
+    if let stopRefusal, stops { throw Ocp1Error.status(stopRefusal) }
     commands.append((id, command))
-    if !starts, endpointStatuses[id]?.state == .running { interruptions += 1 }
-    let status = OcaMediaStreamEndpointStatus(state: starts ? .running : .ready)
+    if stops, endpointStatuses[id]?.state == .running { interruptions += 1 }
+    let running = endpointStatuses[id]?.state == .running
+    let state: OcaMediaStreamEndpointState = switch command {
+    case .start, .connectAndStart: .running
+    case .connect: running ? .running : .connected
+    case .stop: .connected
+    default: .ready
+    }
+    let status = OcaMediaStreamEndpointStatus(state: state)
     guard lateStatus else { return update(endpointID: id, status: status) }
     Task { @OcaDevice in
       try await Task.sleep(for: .milliseconds(200))
@@ -136,7 +146,7 @@ final class TestDanteAes67Application: SwiftOCADevice.DanteOcaMediaTransportAppl
     case .start, .connectAndStart:
       guard let sdp = configuredSDPs[id] else { throw Ocp1Error.status(.invalidRequest) }
       active[id] = sdp
-    case .stop:
+    case .stop, .stopAndDisconnect:
       active[id] = nil
     default:
       throw Ocp1Error.status(.notImplemented)
@@ -483,10 +493,10 @@ final class RTPConnectionTests: XCTestCase {
     XCTAssertEqual(application.endpointStatuses[1]?.state, .running)
   }
 
-  /// Disabling a running receiver sends Stop, then configures it with what is staged, so it
-  /// is Ready on that description, or on a new one.
+  /// Disabling a running receiver sends StopAndDisconnect, then configures it with what is
+  /// staged, so it is Ready on that description, or on a new one.
   @OcaDevice
-  func testDisablingARunningReceiverStopsIt() async throws {
+  func testDisablingARunningReceiverStopsAndDisconnectsIt() async throws {
     let application = try await makeApplication()
     let stack = try await ConnectionStack([application])
     let path = "receivers/\(await stack.id(application, 1))"
@@ -495,7 +505,7 @@ final class RTPConnectionTests: XCTestCase {
     ])
     try await patchOK(stack, path, ["master_enable": false])
     XCTAssertEqual(application.configured.map(\.sdp), [Self.multicast, Self.multicast])
-    XCTAssertEqual(application.commands.map(\.command), [.connectAndStart, .stop])
+    XCTAssertEqual(application.commands.map(\.command), [.connectAndStart, .stopAndDisconnect])
     XCTAssertEqual(application.endpointStatuses[1]?.state, .ready)
     let stopped = try await stack.send(.GET, "\(path)/active")
     XCTAssertEqual(stopped.json?["master_enable"], false)
@@ -504,9 +514,49 @@ final class RTPConnectionTests: XCTestCase {
     try await patchOK(stack, path, [
       "master_enable": false, "transport_file": ["data": .string(Self.sourceSpecific), "type": "application/sdp"],
     ])
-    XCTAssertEqual(application.commands.map(\.command), [.connectAndStart, .stop, .connectAndStart, .stop])
+    XCTAssertEqual(
+      application.commands.map(\.command),
+      [.connectAndStart, .stopAndDisconnect, .connectAndStart, .stopAndDisconnect]
+    )
     XCTAssertEqual(application.configured.last?.sdp, Self.sourceSpecific)
     XCTAssertEqual(application.endpointStatuses[1]?.state, .ready)
+  }
+
+  /// A receiver Connected without a start is still joined to its stream, so disabling it
+  /// disconnects it too: StopAndDisconnect leaves it Ready on what is staged.
+  @OcaDevice
+  func testDisablingAConnectedReceiverDisconnectsIt() async throws {
+    let application = try await makeApplication()
+    let stack = try await ConnectionStack([application])
+    let path = "receivers/\(await stack.id(application, 1))"
+    try await patchOK(stack, path, ["master_enable": false, "transport_file": Self.file])
+    try await application.applyEndpointCommand(endpointID: 1, command: .connect, from: TestController())
+    XCTAssertEqual(application.endpointStatuses[1]?.state, .connected)
+    try await patchOK(stack, path, ["master_enable": false])
+    XCTAssertEqual(application.commands.map(\.command), [.connect, .stopAndDisconnect])
+    XCTAssertEqual(application.endpointStatuses[1]?.state, .ready)
+  }
+
+  /// An RTP sender is enabled with ConnectAndStart and disabled with StopAndDisconnect,
+  /// which leaves it Ready, so it neither sends nor keeps its connection.
+  @OcaDevice
+  func testAnRTPSenderIsDisabledWithStopAndDisconnect() async throws {
+    let application = try await makeApplication()
+    application.sendersStart = true
+    application.update(endpointID: 1001, status: .init(state: .running))
+    let stack = try await ConnectionStack([application])
+    let path = "senders/\(await stack.id(application, 1001))"
+    try await patchOK(stack, path, ["master_enable": false])
+    XCTAssertEqual(application.commands.map(\.command), [.stopAndDisconnect])
+    XCTAssertEqual(application.endpointStatuses[1001]?.state, .ready)
+    let disabled = try await stack.send(.GET, "\(path)/active")
+    XCTAssertEqual(disabled.json?["master_enable"], false)
+
+    try await patchOK(stack, path, ["master_enable": true])
+    XCTAssertEqual(application.commands.map(\.command), [.stopAndDisconnect, .connectAndStart])
+    XCTAssertEqual(application.endpointStatuses[1001]?.state, .running)
+    let enabled = try await stack.send(.GET, "\(path)/active")
+    XCTAssertEqual(enabled.json?["master_enable"], true)
   }
 
   /// Disabled with parameters but no file, the receiver is configured from them and left
@@ -855,7 +905,8 @@ extension RTPConnectionTests {
     }
   }
 
-  /// A refused Start or Stop other than Locked is the device failing (500), not the request.
+  /// A refused ConnectAndStart or StopAndDisconnect other than Locked is the device failing
+  /// (500), not the request.
   @OcaDevice
   func testARefusedCommandIsTheDevicesFailure() async throws {
     let application = try await makeApplication()
@@ -873,11 +924,11 @@ extension RTPConnectionTests {
     application.stopRefusal = .deviceError
     let stopped = try await patch(stack, path, ["master_enable": false])
     XCTAssertEqual(stopped, .internalServerError)
-    XCTAssertEqual(application.endpointStatuses[1]?.state, .running, "a refused Stop changes nothing")
+    XCTAssertEqual(application.endpointStatuses[1]?.state, .running, "a refused stop changes nothing")
   }
 
-  /// A device that refuses ConnectAndStart or Stop NotImplemented fails the activation like
-  /// any other refusal (500), and is put back as it was.
+  /// A device that refuses ConnectAndStart or StopAndDisconnect NotImplemented fails the
+  /// activation like any other refusal (500), and is put back as it was.
   @OcaDevice
   func testNotImplementedFailsTheActivation() async throws {
     let application = try await makeApplication()
@@ -916,8 +967,8 @@ extension RTPConnectionTests {
     XCTAssertEqual(application.commands.map(\.command), [.connectAndStart])
   }
 
-  /// Disabling a receiver of an application that describes its streams itself stops it,
-  /// keeping what it was configured with.
+  /// Disabling a receiver of an application that describes its streams itself stops and
+  /// disconnects it, keeping what it was configured with.
   @OcaDevice
   func testDisablingAReceiverDescribedBySDPStopsIt() async throws {
     _ = try await TestDevice.networkManager()

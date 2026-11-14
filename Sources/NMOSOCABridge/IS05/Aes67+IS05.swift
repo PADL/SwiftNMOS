@@ -46,8 +46,8 @@ extension NMOSOcaRTPAdaptation {
   }
 
   /// A sender with an active description transmits unless it is Ready: AES70-21 starts one
-  /// from there with Connect and Start (Annex, Phase 5). Connected counts as enabled, as a
-  /// started sender may wait there for its media.
+  /// from there with Connect and Start (Annex, Phase 5), and StopAndDisconnect returns it there.
+  /// Connected counts as enabled, as a started sender may wait there for its media.
   public func isSenderEnabled(in state: OcaMediaStreamEndpointState) -> Bool {
     state != .ready
   }
@@ -177,7 +177,8 @@ extension NMOSOcaRTPAdaptation {
 
   /// The receiver is configured from what is staged, which leaves it Ready (AES70-21
   /// §10.2.4), then started with ConnectAndStart (Annex F) if `master_enable` is true, or
-  /// stopped first if it is false and may be running. Devices keep running a receiver
+  /// stopped and disconnected first with StopAndDisconnect if it is false and may be connected,
+  /// so a disabled receiver neither receives nor stays joined. Devices keep running a receiver
   /// configured with the stream it runs, so re-asserting does not interrupt it. Disabled with
   /// nothing staged that describes a stream, it is configured with no description, which
   /// closes its connection (NotReady). A failure puts the receiver back as it was.
@@ -189,8 +190,8 @@ extension NMOSOcaRTPAdaptation {
     let selection = try await description(for: endpoint, staged: staged, parameters)
     let previous = await activeSelection(of: endpoint)
     let wasRunning = await isRunning(endpoint)
-    if !staged.masterEnable, await mayBeRunning(endpoint) {
-      try await applyEndpointCommand(.stop, to: endpoint)
+    if !staged.masterEnable, await mayBeConnected(endpoint) {
+      try await applyEndpointCommand(.stopAndDisconnect, to: endpoint)
     }
     do {
       try await configure(endpoint, selection)
@@ -233,9 +234,9 @@ extension NMOSOcaRTPAdaptation {
     return await activeSDP(of: current) != nil && isReceiverEnabled(current)
   }
 
-  /// Whether the receiver has a description and is not known to be Ready (it may be
-  /// Connected, halted, or have no status): whether to stop it before disabling it.
-  private func mayBeRunning(_ endpoint: NMOSOcaEndpoint) async -> Bool {
+  /// Whether the receiver has a description and is not known to be Ready (it may be Running,
+  /// Connected, halted, or have no status): whether to stop and disconnect it before disabling it.
+  private func mayBeConnected(_ endpoint: NMOSOcaEndpoint) async -> Bool {
     let current = endpoint.refreshed
     guard await activeSDP(of: current) != nil else { return false }
     return state(of: current) != .ready
