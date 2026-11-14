@@ -100,33 +100,29 @@ follows that change too.
 AES70-21 Clause 10.2.4 has `ConfigureEndpointFromSDP` configure a receiver and leave it
 Ready, without starting it; the controller then starts it with `ApplyEndpointCommand`
 ConnectAndStart, which starts a Ready endpoint (Annex F). An RTP receiver's activation does
-the same. The description is the staged transport file, or one made from the staged
+the same, with the staged transport file or a description made from the staged
 parameters:
 
 - With `master_enable` true, the receiver is configured, then started with
-  ConnectAndStart. One already Running on that description is left as it is, and one
-  Ready or Connected on it is not configured again, so re-asserting does not interrupt
-  the audio.
+  ConnectAndStart.
 - With `master_enable` false, a receiver that has a description and is not known to be
-  Ready (including one with no status) is stopped with Stop, and configured if the
-  description changed, so it ends Ready on what is staged. A device that starts what it
-  is configured with is stopped after configuring. A refused Stop fails the request.
+  Ready (including one with no status) is stopped with Stop, then configured, so it ends
+  Ready on what is staged.
 - With `master_enable` false and nothing staged that names a stream (no transport file,
   multicast group or source), it is configured with an empty description, which closes
   its connection (NotReady).
 
-Two descriptions are the same when the selected media description's text is, or when they
-differ only in what does not change the stream received: direction, the session's name and
-information, and the origin line. Addresses, port, payload, format, packet time and the
-`ts-refclk`, `mediaclk`, `clock-domain`, `channel-order` and `fmtp` attributes all count.
+The bridge does not decide whether a description is the one a receiver already runs: the
+devices do. Each keeps running a receiver configured with the stream it runs (the media
+bridge, the XMOS firmware's receivers, Dante flows and the mock alike), so re-asserting a
+running receiver does not interrupt it.
 
 A refused ConnectAndStart or Stop, `NotImplemented` included, fails the activation (423
-for `Locked`, else 500). An activation that fails after it changed the device puts the
-device back: the previous description, or none, is configured again and started again if
-it was running, so the request changes nothing and `/staged` and `/active` say what the
-device is doing. Another
-controller may configure the receiver between the check and the start: IS-05's
-per-endpoint lock covers IS-05 requests only.
+for `Locked`, else 500). An activation that fails puts the receiver back: the previous
+description, or none, is configured again and started again if it was running, so the
+request changes nothing and `/staged` and `/active` say what the device is doing. Another
+controller may configure the receiver while an activation runs: IS-05's per-endpoint lock
+covers IS-05 requests only.
 
 An AES67 receiver with an active description is enabled only while Running: Ready,
 Connected without a start, halted, unknown, or with no status, it is disabled. Any other

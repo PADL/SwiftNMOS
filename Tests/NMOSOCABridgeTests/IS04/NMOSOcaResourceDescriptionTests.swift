@@ -138,6 +138,8 @@ private final class SDPApplication: SwiftOCADevice.OcaMediaTransportApplication,
     from controller: any OcaController
   ) async throws {
     configuredSDPs[id] = sdpString
+    // the description an endpoint runs keeps it running
+    if active[id] == sdpString, !sdpString.isEmpty { return }
     active[id] = nil
     endpointStatuses[id] = .init(state: sdpString.isEmpty ? .notReady : .ready)
   }
