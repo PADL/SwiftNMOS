@@ -290,18 +290,18 @@ public actor NMOSConnectionAPI {
   /// asked for is in force. Settings left to the endpoint (`auto`) may be anything. A
   /// transport may write a setting differently from the client (an identifier in another
   /// case, the interface it has in place of the one named), so a setting is also in force
-  /// while it reads as it did straight after the activation.
+  /// while it reads as it did straight after the activation. A disabled endpoint need not
+  /// keep the settings it was disabled with, but one it still reports must be those.
   private static func agrees(_ active: NMOSConnectionState, with activated: Activated) -> Bool {
     let asked = activated.asked
     guard active.masterEnable == asked.masterEnable else { return false }
-    // a disabled endpoint need not hold on to the settings it was disabled with
-    guard asked.masterEnable else { return true }
-    guard active.transportParameters.count == asked.transportParameters.count else { return false }
+    guard active.transportParameters.count == asked.transportParameters.count else { return !asked.masterEnable }
     let readBack = activated.readBack.transportParameters
     return zip(active.transportParameters, asked.transportParameters).enumerated().allSatisfy { leg, legs in
       legs.1.allSatisfy { name, value in
         guard value != "auto" else { return true }
-        guard let current = legs.0[name] else { return false }
+        guard let current = legs.0[name] else { return !asked.masterEnable }
+        if !asked.masterEnable, current == .null { return true }
         if NMOSConnectionValidation.equal(current, value) { return true }
         guard leg < readBack.count, let written = readBack[leg][name] else { return false }
         return NMOSConnectionValidation.equal(current, written)
@@ -443,7 +443,9 @@ public actor NMOSConnectionAPI {
     let active: NMOSConnectionState
     do {
       active = try await provider.activate(key.kind, id: key.id, staged: staged)
-    } catch let error as NMOSConnectionError {
+    } catch {
+      await forgetActivation(key)
+      guard let error = error as? NMOSConnectionError else { throw error }
       throw Self.httpError(error)
     }
     guard var entry = entries[key] else { return }
@@ -457,6 +459,16 @@ public actor NMOSConnectionAPI {
     await store.setSubscription(
       key.kind, id: key.id, active: active.masterEnable, peer: active.peerID ?? staged.peerID, touch: true
     )
+  }
+
+  /// After a failed activation: if the endpoint is no longer doing what it last reported,
+  /// what was activated before no longer describes it, so `/active` reads the device alone.
+  private func forgetActivation(_ key: Key) async {
+    guard let current = try? await provider.active(key.kind, id: key.id), var entry = entries[key],
+          current != entry.lastActive else { return }
+    entry.activated = nil
+    entry.lastActive = current
+    entries[key] = entry
   }
 
   // MARK: - Changes made elsewhere

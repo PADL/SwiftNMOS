@@ -90,8 +90,7 @@ public final class NMOSOcaConnectionProvider: NMOSConnectionProvider {
       logger.info("activation of \(kind.rawValue) \(id) failed: \(error)")
       throw NMOSConnectionError(error)
     }
-    // the endpoint that was found is a copy from before the change
-    return try await found.adaptation.active(of: found.endpoint.refreshed)
+    return try await found.adaptation.activatedState(of: found.endpoint, staged: staged)
   }
 
   /// The connections are read from the description, so they change when it does.

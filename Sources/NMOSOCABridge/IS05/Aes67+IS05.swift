@@ -52,14 +52,19 @@ extension NMOSOcaRTPAdaptation {
     state != .ready
   }
 
-  /// A receiver with an active description receives unless it is Ready, where
-  /// ConfigureEndpointFromSDP leaves an AES67 endpoint until it is started (AES70-21
-  /// §10.2.4). Any other application describes a receiver's stream only once it is started.
+  /// A receiver with an active description receives while it is Running: ConfigureEndpointFromSDP
+  /// leaves an AES67 endpoint Ready until it is started (AES70-21 §10.2.4), and one that is
+  /// Connected, halted, or has no status is not known to receive. An application that
+  /// refused Start NotImplemented receives whenever it has a description. Any other
+  /// application describes a receiver's stream only once it is started.
   private func isReceiverEnabled(_ endpoint: NMOSOcaEndpoint) -> Bool {
     guard adaptationData(of: endpoint) != nil else { return true }
-    // a receiver with no status is not known to have been started
-    guard let state = try? endpoint.application.endpointStatus(endpoint.endpoint.idInternal).state else { return false }
-    return state != .ready
+    if NMOSOcaStreamsOnConfigure.contains(endpoint.application) { return true }
+    return state(of: endpoint) == .running
+  }
+
+  private func state(of endpoint: NMOSOcaEndpoint) -> OcaMediaStreamEndpointState? {
+    try? endpoint.application.endpointStatus(endpoint.endpoint.idInternal).state
   }
 
   private func adaptationData(of endpoint: NMOSOcaEndpoint) -> Aes67EndpointAdaptationData? {
@@ -173,10 +178,14 @@ extension NMOSOcaRTPAdaptation {
   // MARK: Activation
 
   /// The receiver is configured from what is staged, which leaves it Ready (AES70-21
-  /// §10.2.4), unless it already has that description, then started with ApplyEndpointCommand
-  /// Start if `master_enable` is true, or stopped if it is false and the receiver runs.
-  /// Disabled with nothing staged that describes a stream, it is configured with no
-  /// description instead, which closes its connection (NotReady).
+  /// §10.2.4), then started with ApplyEndpointCommand ConnectAndStart, which a Ready
+  /// endpoint is started with (Annex F), if `master_enable` is true, or
+  /// stopped if it is false and may be running. A receiver Ready, Connected or Running on
+  /// that description already is not configured again, and one Running on it is left as it
+  /// is. Disabled with nothing staged that describes a stream, it is configured with no
+  /// description instead, which closes its connection (NotReady). Another controller may
+  /// configure the receiver between the check and Start: the per-endpoint lock covers IS-05
+  /// requests only.
   public func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
     let parameters = staged.transportParameters.first ?? [:]
     guard staged.masterEnable || describesStream(staged, parameters) else {
@@ -187,9 +196,29 @@ extension NMOSOcaRTPAdaptation {
     guard staged.masterEnable else {
       return try await disableReceiver(endpoint, selection, unchanged: unchanged)
     }
-    if !unchanged { try await configure(endpoint, selection) }
-    // a device whose endpoints cannot be started streams once configured, as before AES70-21
-    try await applyEndpointCommand(.start, to: endpoint, unlessNotImplemented: true)
+    let wasRunning = await isRunning(endpoint)
+    if unchanged, wasRunning { return }
+    let keep = unchanged && [.ready, .connected, .running].contains(state(of: endpoint.refreshed))
+    let previous = await activeSelection(of: endpoint)
+    if !keep { try await configure(endpoint, selection) }
+    do {
+      // a device that refuses NotImplemented streams once configured, as before AES70-21
+      if try await !applyEndpointCommand(.connectAndStart, to: endpoint, toleratingNotImplemented: true) {
+        NMOSOcaStreamsOnConfigure.insert(endpoint.application)
+      }
+    } catch {
+      if !keep { await restore(endpoint, previous, running: wasRunning) }
+      throw error
+    }
+  }
+
+  /// The commands an activation sent succeeded, so its `master_enable` is in force, whether
+  /// or not the device has reported its new status yet (a proxy may report it later, as an
+  /// event); the rest is read from the device.
+  public func activatedState(of endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws -> NMOSConnectionState {
+    var state = try await active(of: endpoint.refreshed)
+    state.masterEnable = staged.masterEnable
+    return state
   }
 
   /// Whether what is staged names a stream for a disabled receiver to be configured with: a
@@ -199,24 +228,42 @@ extension NMOSOcaRTPAdaptation {
       || parameters["source_ip"]?.nonEmptyString != nil
   }
 
-  /// A running receiver is stopped, then configured if the description differs, so it ends
-  /// Ready on what is staged. Configuring does not stop a receiver already running that
-  /// description; a device that cannot stop one is configured with no description instead.
+  /// A receiver that may be running is stopped, then configured if the description differs,
+  /// so it ends Ready on what is staged; a device that cannot stop one is configured with no
+  /// description instead. A device that starts what it is configured with, found running
+  /// once configured, is stopped the same way. A failure after the device changed puts it
+  /// back as it was.
   private func disableReceiver(_ endpoint: NMOSOcaEndpoint, _ selection: Selection, unchanged: Bool) async throws {
-    if await isRunning(endpoint), try await !stopOrClose(endpoint) { return }
+    let wasRunning = await isRunning(endpoint)
+    let previous = await activeSelection(of: endpoint)
+    let stopping = await mayBeRunning(endpoint)
+    if stopping, try await !stopOrClose(endpoint) { return }
     guard !unchanged else { return }
-    try await configure(endpoint, selection)
-    // a device that starts what it is configured with
-    if await isRunning(endpoint) { _ = try await stopOrClose(endpoint) }
+    do {
+      try await configure(endpoint, selection)
+    } catch {
+      if stopping { await restore(endpoint, previous, running: wasRunning) }
+      throw error
+    }
+    if !stopping, await isRunning(endpoint) { _ = try await stopOrClose(endpoint) }
   }
 
   /// Stops the receiver; false if the device cannot, and its connection was closed instead.
   private func stopOrClose(_ endpoint: NMOSOcaEndpoint) async throws -> Bool {
-    guard try await applyEndpointCommand(.stop, to: endpoint, unlessNotImplemented: true) else {
+    guard try await applyEndpointCommand(.stop, to: endpoint, toleratingNotImplemented: true) else {
       try await configure(endpoint, Selection(sdpString: ""))
       return false
     }
     return true
+  }
+
+  /// Puts a receiver back as it was before a failed activation: configured with what it had,
+  /// or with nothing, and started again if it was running. Best effort: the activation's
+  /// own failure is what the client is told.
+  private func restore(_ endpoint: NMOSOcaEndpoint, _ previous: Selection?, running: Bool) async {
+    try? await configure(endpoint, previous ?? Selection(sdpString: ""))
+    guard running, previous != nil else { return }
+    _ = try? await applyEndpointCommand(.connectAndStart, to: endpoint, toleratingNotImplemented: true)
   }
 
   /// Whether the receiver runs a stream, as `/active` reports it.
@@ -225,14 +272,79 @@ extension NMOSOcaRTPAdaptation {
     return await activeSDP(of: current) != nil && isReceiverEnabled(current)
   }
 
-  /// Whether the receiver's active description is the stream `selection` selects.
+  /// Whether the receiver has a description and is not known to be Ready (it may have no
+  /// status at all), or belongs to an application that streams once configured.
+  private func mayBeRunning(_ endpoint: NMOSOcaEndpoint) async -> Bool {
+    let current = endpoint.refreshed
+    guard await activeSDP(of: current) != nil else { return false }
+    return NMOSOcaStreamsOnConfigure.contains(current.application) || state(of: current) != .ready
+  }
+
+  /// The description the receiver has, and the media description it selects, as it would be
+  /// given back to ConfigureEndpointFromSDP; nil when it has none.
+  private func activeSelection(of endpoint: NMOSOcaEndpoint) async -> Selection? {
+    let current = endpoint.refreshed
+    if let data = adaptationData(of: current) {
+      guard !data.activeSDP.isEmpty else { return nil }
+      return Selection(sdpString: data.activeSDP, mediaIDType: data.mediaIDType, mediaID: data.mediaID)
+    }
+    let text = await activeSDPString(of: current)
+    return text.isEmpty ? nil : Selection(sdpString: text)
+  }
+
+  /// The media description the receiver's active description selects, as text: the one
+  /// AdaptationData.MediaID names, else the first that parses.
+  private func activeStreamText(of endpoint: NMOSOcaEndpoint) async -> String? {
+    guard let active = await activeSelection(of: endpoint) else { return nil }
+    if active.mediaIDType != .none {
+      return try? MediaStreamSDP.selectStream(in: active.sdpString, mediaIDType: active.mediaIDType, mediaID: active.mediaID)
+    }
+    return MediaStreamSDP.streams(in: active.sdpString).first { MediaStreamSDP(sdpString: $0) != nil }
+  }
+
+  /// Whether the receiver's active description is the stream `selection` selects: the same
+  /// text, or the same stream, with what does not change the stream received left out.
   private func isActive(_ selection: Selection, on endpoint: NMOSOcaEndpoint) async -> Bool {
-    guard let active = await activeSDP(of: endpoint),
-          let text = try? MediaStreamSDP.selectStream(
+    guard let active = await activeStreamText(of: endpoint),
+          let selected = try? MediaStreamSDP.selectStream(
             in: selection.sdpString, mediaIDType: selection.mediaIDType, mediaID: selection.mediaID
           )
     else { return false }
-    return MediaStreamSDP(sdpString: text) == active
+    if selected == active { return true }
+    guard let key = StreamKey(selected) else { return false }
+    return key == StreamKey(active)
+  }
+
+  /// What of a media description decides the stream a receiver receives: its addresses,
+  /// payload and format, and its clock and channel attributes as written. Direction, the
+  /// session's name and information, and the origin line are left out.
+  private struct StreamKey: Equatable {
+    let destinationAddress: String
+    let destinationPort: UInt16
+    let sourceAddress: String?
+    let payloadType: UInt8
+    let sampleSize: UInt8
+    let sampleRate: UInt32
+    let channelCount: UInt16
+    let packetTime: TimeInterval
+    let attributes: [String]
+
+    private static let attributeNames = ["ts-refclk", "mediaclk", "clock-domain", "channel-order", "fmtp"]
+
+    init?(_ text: String) {
+      guard let sdp = MediaStreamSDP(sdpString: text) else { return nil }
+      destinationAddress = sdp.destinationAddress
+      destinationPort = sdp.destinationPort
+      sourceAddress = sdp.sourceAddress
+      payloadType = sdp.payloadType
+      sampleSize = sdp.sampleSize
+      sampleRate = sdp.sampleRate
+      channelCount = sdp.channelCount
+      packetTime = sdp.packetTime
+      attributes = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+        .filter { line in Self.attributeNames.contains { line.hasPrefix("a=\($0):") } }
+        .sorted()
+    }
   }
 
   /// A ConfigureEndpointFromSDP call's description and the media description it selects.
@@ -250,6 +362,7 @@ extension NMOSOcaRTPAdaptation {
     _ parameters: NMOSTransportParameters
   ) async throws -> Selection {
     var original: (file: OcaSDPString, sdp: MediaStreamSDP, index: Int)?
+    var unchangedCurrent: MediaStreamSDP?
     if let file = staged.transportFile, file.data != nil {
       original = try stream(of: file)
     }
@@ -259,6 +372,7 @@ extension NMOSOcaRTPAdaptation {
       sdp = original.sdp
     } else if let current = await activeSDP(of: endpoint) {
       sdp = current
+      unchangedCurrent = current
     } else {
       sdp = Self.template(for: endpoint)
     }
@@ -285,6 +399,13 @@ extension NMOSOcaRTPAdaptation {
     {
       // nothing the parameters say differs from the file, so the device gets the file
       return Self.selection(of: original.index, in: original.file)
+    }
+    if let current = unchangedCurrent, current.destinationAddress == sdp.destinationAddress,
+       current.destinationPort == sdp.destinationPort, current.sourceAddress == sdp.sourceAddress,
+       let active = await activeSelection(of: endpoint)
+    {
+      // nothing the parameters say differs from what the receiver has, which it keeps
+      return active
     }
     // a rendered description has a single media description
     return Selection(sdpString: sdp.sdpString)
@@ -352,5 +473,27 @@ extension NMOSOcaRTPAdaptation {
     } catch {
       throw NMOSConnectionError(error)
     }
+  }
+}
+
+/// The applications that refused ApplyEndpointCommand Start NotImplemented, which stream
+/// once a receiver is configured, as before AES70-21: their status cannot be relied on to
+/// say whether a receiver runs, so one with a description counts as running.
+@OcaDevice
+enum NMOSOcaStreamsOnConfigure {
+  private final class Weak {
+    weak var application: SwiftOCADevice.OcaMediaTransportApplication?
+    init(_ application: SwiftOCADevice.OcaMediaTransportApplication) { self.application = application }
+  }
+
+  private static var applications = [ObjectIdentifier: Weak]()
+
+  static func contains(_ application: SwiftOCADevice.OcaMediaTransportApplication) -> Bool {
+    applications[ObjectIdentifier(application)]?.application === application
+  }
+
+  static func insert(_ application: SwiftOCADevice.OcaMediaTransportApplication) {
+    applications = applications.filter { $0.value.application != nil }
+    applications[ObjectIdentifier(application)] = Weak(application)
   }
 }

@@ -81,6 +81,10 @@ public protocol NMOSOcaTransportAdaptation: Sendable {
   /// Whether a sending endpoint whose status is `state` transmits, which is its IS-05
   /// `master_enable`.
   func isSenderEnabled(in state: OcaMediaStreamEndpointState) -> Bool
+
+  /// What an activation that succeeded leaves the endpoint doing: by default, what the
+  /// device reports straight afterwards.
+  func activatedState(of endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws -> NMOSConnectionState
 }
 
 public extension NMOSOcaTransportAdaptation {
@@ -157,14 +161,14 @@ public extension NMOSOcaTransportAdaptation {
   }
 
   /// Applies an ApplyEndpointCommand to the endpoint; false if the application refused it
-  /// NotImplemented and `unlessNotImplemented` is set. Any other refusal fails as its status
-  /// says: Locked is 423, a parameter error 400, and NotImplemented or any other 500, as
-  /// IS-05 answers a request that meets the schema and the constraints.
+  /// NotImplemented and `toleratingNotImplemented` is set. Any other refusal fails: Locked
+  /// is 423, and anything else 500, as IS-05 answers a request that meets the schema and the
+  /// constraints but cannot be carried out.
   @discardableResult
   func applyEndpointCommand(
     _ command: OcaMediaStreamEndpointCommand,
     to endpoint: NMOSOcaEndpoint,
-    unlessNotImplemented: Bool = false
+    toleratingNotImplemented: Bool = false
   ) async throws -> Bool {
     do {
       try await endpoint.application.applyEndpointCommand(
@@ -173,10 +177,18 @@ public extension NMOSOcaTransportAdaptation {
         from: NMOSOcaControlController.connection
       )
       return true
-    } catch Ocp1Error.status(.notImplemented) where unlessNotImplemented {
+    } catch Ocp1Error.status(.notImplemented) where toleratingNotImplemented {
       return false
+    } catch Ocp1Error.status(.locked) {
+      throw NMOSConnectionError(Ocp1Error.status(.locked))
     } catch {
-      throw NMOSConnectionError(error)
+      let reason = if case let Ocp1Error.status(status) = error { "\(status)" } else { "\(error)" }
+      throw NMOSConnectionError.failed("The device refused ApplyEndpointCommand \(command) (\(reason))")
     }
+  }
+
+  /// What an activation that succeeded leaves the endpoint doing, read from the device.
+  func activatedState(of endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws -> NMOSConnectionState {
+    try await active(of: endpoint.refreshed)
   }
 }

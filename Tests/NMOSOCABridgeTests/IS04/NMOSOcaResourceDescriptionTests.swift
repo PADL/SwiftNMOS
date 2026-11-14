@@ -147,7 +147,7 @@ private final class SDPApplication: SwiftOCADevice.OcaMediaTransportApplication,
     command: OcaMediaStreamEndpointCommand,
     from controller: any OcaController
   ) async throws {
-    guard command == .start, let sdp = configuredSDPs[id], !sdp.isEmpty else { throw Ocp1Error.status(.invalidRequest) }
+    guard command == .start || command == .connectAndStart, let sdp = configuredSDPs[id], !sdp.isEmpty else { throw Ocp1Error.status(.invalidRequest) }
     active[id] = sdp
     endpointStatuses[id] = .init(state: .running)
   }

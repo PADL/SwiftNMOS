@@ -74,13 +74,14 @@ method `ApplyEndpointCommand` (Start or Stop). `/active` reads the endpoint's st
 - An RTP sender is disabled while Ready, or while it has no active description. Connected
   counts as enabled, as a started sender may wait there for its media.
 
-Nothing waits for the device. After an accepted command, `/active` and the activation's
-IS-04 update read what the device reports at that moment. A device that reports its state
-later shows the change in `/active` when it does.
+Nothing waits for the device. After an accepted command, `/active` reads what the device
+reports at that moment; for an RTP endpoint the activation's IS-04 update says what the
+commands that succeeded did, as a device that proxies another may report its state later,
+and `/active` shows the change when it does.
 
-A refusal is answered as its status says. `Locked` gives 423, and a parameter error 400.
-`NotImplemented` or any other status gives 500, because the request meets the schema and
-the constraints and IS-05 answers it with 500 when it cannot be carried out. IS-05 cannot
+A refused Start or Stop is the device's failure, not the request's: `Locked` gives 423,
+and any other status 500, because the request meets the schema and the constraints and
+IS-05 answers it with 500 when it cannot be carried out. IS-05 cannot
 constrain `master_enable` (`/constraints` covers transport parameters only), so these
 senders say nothing in advance and refuse a disable with 500:
 
@@ -97,25 +98,41 @@ follows that change too.
 ### Activating RTP receivers
 
 AES70-21 Clause 10.2.4 has `ConfigureEndpointFromSDP` configure a receiver and leave it
-Ready, without starting it; the controller then starts it with `ApplyEndpointCommand`.
-An RTP receiver's activation does the same. The description is the staged transport file,
-or one made from the staged parameters, and a receiver that already has it is not
-configured again, so re-asserting a running receiver does not interrupt it:
+Ready, without starting it; the controller then starts it with `ApplyEndpointCommand`
+ConnectAndStart, which starts a Ready endpoint (Annex F). An RTP receiver's activation does
+the same. The description is the staged transport file, or one made from the staged
+parameters:
 
-- With `master_enable` true, the receiver is configured, then started with Start.
-- With `master_enable` false, a running receiver is stopped with Stop and configured if
-  the description changed, so it ends Ready on what is staged.
+- With `master_enable` true, the receiver is configured, then started with
+  ConnectAndStart. One already Running on that description is left as it is, and one
+  Ready or Connected on it is not configured again, so re-asserting does not interrupt
+  the audio.
+- With `master_enable` false, a receiver that has a description and is not known to be
+  Ready (including one with no status) is stopped with Stop, and configured if the
+  description changed, so it ends Ready on what is staged. A device that starts what it
+  is configured with is stopped after configuring.
 - With `master_enable` false and nothing staged that names a stream (no transport file,
   multicast group or source), it is configured with an empty description, which closes
   its connection (NotReady).
 
-A device that refuses Start or Stop `NotImplemented` streams once configured, as before
-AES70-21: its Start counts as done, and disabling it closes its connection instead. Any
-other refused Start fails the activation as a sender's refusal does, and leaves the
-receiver configured and Ready.
+Two descriptions are the same when the selected media description's text is, or when they
+differ only in what does not change the stream received: direction, the session's name and
+information, and the origin line. Addresses, port, payload, format, packet time and the
+`ts-refclk`, `mediaclk`, `clock-domain`, `channel-order` and `fmtp` attributes all count.
 
-An AES67 receiver with an active description is disabled while Ready, or while it has no
-status. Any other application describes a receiver's stream only once it is started.
+A device that refuses ConnectAndStart or Stop `NotImplemented` streams once configured, as
+before AES70-21: its start counts as done, it counts as receiving while it has a
+description whatever its status says, and disabling it closes its connection instead.
+
+An activation that fails after it changed the device puts the device back: the previous
+description, or none, is configured again and started again if it was running, so the
+request changes nothing and `/staged` and `/active` say what the device is doing. Another
+controller may configure the receiver between the check and the start: IS-05's
+per-endpoint lock covers IS-05 requests only.
+
+An AES67 receiver with an active description is enabled only while Running: Ready,
+Connected without a start, halted, unknown, or with no status, it is disabled. Any other
+application describes a receiver's stream only once it is started.
 
 ## Example
 
