@@ -87,11 +87,12 @@ final class TestAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
 }
 
 /// A Dante application whose even-numbered channels are carried by AES67 flows, which
-/// it describes and accepts as SDP: a description is held until Start receives it.
+/// it describes and accepts as SDP: a description configured on a channel is received once
+/// Start applies it.
 final class TestDanteAes67Application: SwiftOCADevice.DanteOcaMediaTransportApplication,
   MediaStreamEndpointSDPRepresentable
 {
-  var held = [OcaMediaStreamEndpointID: OcaSDPString]()
+  var configuredSDPs = [OcaMediaStreamEndpointID: OcaSDPString]()
   var active = [OcaMediaStreamEndpointID: OcaSDPString]()
 
   func getActiveSDP(_ id: OcaMediaStreamEndpointID) async throws -> OcaSDPString { active[id] ?? "" }
@@ -103,7 +104,7 @@ final class TestDanteAes67Application: SwiftOCADevice.DanteOcaMediaTransportAppl
     mediaID: OcaString,
     from controller: any OcaController
   ) async throws {
-    held[id] = sdpString
+    configuredSDPs[id] = sdpString
     active[id] = nil
   }
 
@@ -112,7 +113,7 @@ final class TestDanteAes67Application: SwiftOCADevice.DanteOcaMediaTransportAppl
     command: OcaMediaStreamEndpointCommand,
     from controller: any OcaController
   ) async throws {
-    guard command == .start, let sdp = held[id] else { throw Ocp1Error.status(.notImplemented) }
+    guard command == .start, let sdp = configuredSDPs[id] else { throw Ocp1Error.status(.notImplemented) }
     active[id] = sdp
   }
 
