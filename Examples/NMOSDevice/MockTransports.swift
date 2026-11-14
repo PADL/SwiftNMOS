@@ -70,7 +70,11 @@ final class MockAes67Application: SwiftOCADevice.Aes67OcaMediaTransportApplicati
       return update(endpointID: id, status: .init(state: .notReady))
     }
     _ = try MediaStreamSDP.selectStream(in: sdpString, mediaIDType: mediaIDType, mediaID: mediaID)
+    let data = try? endpoint(id).adaptationData.decode(Aes67EndpointAdaptationData.self)
+    let runs = data?.activeSDP == sdpString && data?.mediaIDType == mediaIDType && data?.mediaID == mediaID
     try setActiveSDP(sdpString, endpoint: id, mediaIDType: mediaIDType, mediaID: mediaID)
+    // a receiver configured with the description it runs keeps running, as a device does
+    if runs, try endpointStatus(id).state == .running { return }
     update(endpointID: id, status: .init(state: .ready))
   }
 
