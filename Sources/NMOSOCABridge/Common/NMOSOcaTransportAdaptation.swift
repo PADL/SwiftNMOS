@@ -75,8 +75,12 @@ public protocol NMOSOcaTransportAdaptation: Sendable {
 
   /// Applies the settings to a receiving endpoint through the application's AES70
   /// methods. Throws `NMOSConnectionError`; the new state is read back from the device
-  /// afterwards. A sender is started and stopped with ApplyEndpointCommand.
+  /// afterwards. A sender is enabled and disabled by `enableSender`.
   func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws
+
+  /// Enables or disables a sending endpoint, as its IS-05 `master_enable` says. Throws
+  /// `NMOSConnectionError`; the new state is read back from the device afterwards.
+  func enableSender(_ endpoint: NMOSOcaEndpoint, _ enabled: Bool) async throws
 
   /// Whether a sending endpoint whose status is `state` transmits, which is its IS-05
   /// `master_enable`.
@@ -136,7 +140,8 @@ public extension NMOSOcaTransportAdaptation {
     return try await active(of: endpoint).transportParameters.map { $0.mapValues { .fixed($0) } }
   }
 
-  /// A sender is stopped while Connected, where AES70's Stop command leaves an endpoint.
+  /// A sender is disabled only while Connected, where an IEEE 1722 talker stopped with Stop
+  /// waits (STREAMING_WAIT); a talker with no listener, or a Dante transmit channel, is Ready.
   func isSenderEnabled(in state: OcaMediaStreamEndpointState) -> Bool {
     state != .connected
   }
@@ -155,9 +160,11 @@ public extension NMOSOcaTransportAdaptation {
     try await enableSender(endpoint, staged.masterEnable)
   }
 
-  /// Starts or stops a sending endpoint with ApplyEndpointCommand Start or Stop.
+  /// Enables a sending endpoint with ApplyEndpointCommand ConnectAndStart and disables it with
+  /// StopAndDisconnect (AES70-21 Annex F): an inactive IS-05 sender keeps no connection, where
+  /// Stop would leave it Connected, announced and reserved but sending nothing.
   func enableSender(_ endpoint: NMOSOcaEndpoint, _ enabled: Bool) async throws {
-    try await applyEndpointCommand(enabled ? .start : .stop, to: endpoint)
+    try await applyEndpointCommand(enabled ? .connectAndStart : .stopAndDisconnect, to: endpoint)
   }
 
   /// Applies an ApplyEndpointCommand to the endpoint. A refusal fails: Locked is 423, and

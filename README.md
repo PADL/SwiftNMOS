@@ -65,21 +65,26 @@ MS-05-02 v1.0.
 ### Enabling and disabling senders
 
 A sender's stream is set up outside NMOS, so its transport parameters are fixed by its
-constraints. IS-05 `master_enable` starts and stops its transmission with the AES70
-method `ApplyEndpointCommand` (Start or Stop). `/active` reads the endpoint's state in
-`EndpointStatuses`:
+constraints. IS-05 `master_enable` enables and disables it with the AES70 method
+`ApplyEndpointCommand`: ConnectAndStart and StopAndDisconnect (AES70-21 Annex F). Stop
+alone would leave the endpoint Connected, still announced (SAP) and reserved (SRP) while
+sending nothing, and IS-05 "inactive" means neither. An IEEE 1722 talker is the exception:
+it is started and stopped with Start and Stop, which an AES70-22 entity sends as
+START_STREAMING and STOP_STREAMING, as the talker holds no connection of its own.
+`/active` reads the endpoint's state in `EndpointStatuses`:
 
-- An IEEE 1722 or Dante sender is disabled while Connected, where AES70's Stop leaves an
-  endpoint.
-- An RTP sender is disabled while Ready, or while it has no active description. Connected
-  counts as enabled, as a started sender may wait there for its media.
+- An IEEE 1722 or Dante sender is disabled while Connected, where Stop leaves a talker
+  (STREAMING_WAIT); Ready, a talker with no listener or a Dante transmit channel, is enabled.
+- An RTP sender is disabled while Ready, where StopAndDisconnect leaves it, or while it has
+  no active description. Connected counts as enabled, as a started sender may wait there
+  for its media.
 
 Nothing waits for the device. After an accepted command, `/active` reads what the device
 reports at that moment; for an RTP endpoint the activation's IS-04 update says what the
 commands that succeeded did, as a device that proxies another may report its state later,
 and `/active` shows the change when it does.
 
-A refused Start or Stop is the device's failure, not the request's: `Locked` gives 423,
+A refused command is the device's failure, not the request's: `Locked` gives 423,
 and any other status 500, because the request meets the schema and the constraints and
 IS-05 answers it with 500 when it cannot be carried out. IS-05 cannot
 constrain `master_enable` (`/constraints` covers transport parameters only), so these
@@ -87,7 +92,8 @@ senders say nothing in advance and refuse a disable with 500:
 
 - every IEEE 1722 sender behind AES70-22, because Milan refuses STOP_STREAMING on a
   STREAM_OUTPUT (Milan v1.2 Section 5.4.2.20);
-- every Dante sender, because AES70-23 has no transmit stop.
+- every Dante sender, because AES70-23 has no transmit stop (StopAndDisconnect is
+  NotImplemented).
 
 The bridge does not observe sender states beyond what it already reads. A stop made by
 another controller reaches `/active` at once, and IS-04 the next time the device is
@@ -106,8 +112,9 @@ parameters:
 - With `master_enable` true, the receiver is configured, then started with
   ConnectAndStart.
 - With `master_enable` false, a receiver that has a description and is not known to be
-  Ready (including one with no status) is stopped with Stop, then configured, so it ends
-  Ready on what is staged.
+  Ready (Running, Connected, halted, or with no status) is stopped and disconnected with
+  StopAndDisconnect, then configured, so it ends Ready on what is staged: a disabled
+  receiver does not stay joined to its multicast group, as a Connected one would.
 - With `master_enable` false and nothing staged that names a stream (no transport file,
   multicast group or source), it is configured with an empty description, which closes
   its connection (NotReady).
@@ -117,8 +124,8 @@ devices do. Each keeps running a receiver configured with the stream it runs (th
 bridge, the XMOS firmware's receivers, Dante flows and the mock alike), so re-asserting a
 running receiver does not interrupt it.
 
-A refused ConnectAndStart or Stop, `NotImplemented` included, fails the activation (423
-for `Locked`, else 500). An activation that fails puts the receiver back: the previous
+A refused ConnectAndStart or StopAndDisconnect, `NotImplemented` included, fails the
+activation (423 for `Locked`, else 500). An activation that fails puts the receiver back: the previous
 description, or none, is configured again and started again if it was running, so the
 request changes nothing and `/staged` and `/active` say what the device is doing. Another
 controller may configure the receiver while an activation runs: IS-05's per-endpoint lock

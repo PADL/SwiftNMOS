@@ -95,6 +95,13 @@ extension NMOSOcaIEEE1722Adaptation {
 
   // MARK: Activation
 
+  /// A talker is started and stopped with Start and Stop, which an AES70-22 entity sends as
+  /// START_STREAMING and STOP_STREAMING (IEEE 1722.1-2021 Clauses 7.4.35, 7.4.36); its stream
+  /// reservation is the listeners', so it has no connection of its own to close.
+  public func enableSender(_ endpoint: NMOSOcaEndpoint, _ enabled: Bool) async throws {
+    try await applyEndpointCommand(enabled ? .start : .stop, to: endpoint)
+  }
+
   public func activateReceiver(_ endpoint: NMOSOcaEndpoint, staged: NMOSConnectionState) async throws {
     guard let agent = await sessionAgent(of: endpoint) else { throw NMOSConnectionError.notFound }
     let id = endpoint.endpoint.idInternal
