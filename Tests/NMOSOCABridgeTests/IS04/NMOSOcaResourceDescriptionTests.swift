@@ -125,7 +125,7 @@ private struct TestTransports {
 /// An application that describes its streams itself and, when configured and started,
 /// changes only an endpoint's status, as a transport without AES67 adaptation data does.
 private final class SDPApplication: SwiftOCADevice.OcaMediaTransportApplication, MediaStreamEndpointSDPRepresentable {
-  private var held = [OcaMediaStreamEndpointID: OcaSDPString]()
+  private var configuredSDPs = [OcaMediaStreamEndpointID: OcaSDPString]()
   private var active = [OcaMediaStreamEndpointID: OcaSDPString]()
 
   func getActiveSDP(_ id: OcaMediaStreamEndpointID) async throws -> OcaSDPString { active[id] ?? "" }
@@ -137,7 +137,7 @@ private final class SDPApplication: SwiftOCADevice.OcaMediaTransportApplication,
     mediaID: OcaString,
     from controller: any OcaController
   ) async throws {
-    held[id] = sdpString
+    configuredSDPs[id] = sdpString
     active[id] = nil
     endpointStatuses[id] = .init(state: sdpString.isEmpty ? .notReady : .ready)
   }
@@ -147,7 +147,7 @@ private final class SDPApplication: SwiftOCADevice.OcaMediaTransportApplication,
     command: OcaMediaStreamEndpointCommand,
     from controller: any OcaController
   ) async throws {
-    guard command == .start, let sdp = held[id], !sdp.isEmpty else { throw Ocp1Error.status(.invalidRequest) }
+    guard command == .start, let sdp = configuredSDPs[id], !sdp.isEmpty else { throw Ocp1Error.status(.invalidRequest) }
     active[id] = sdp
     endpointStatuses[id] = .init(state: .running)
   }
