@@ -160,25 +160,16 @@ public extension NMOSOcaTransportAdaptation {
     try await applyEndpointCommand(enabled ? .start : .stop, to: endpoint)
   }
 
-  /// Applies an ApplyEndpointCommand to the endpoint; false if the application refused it
-  /// NotImplemented and `toleratingNotImplemented` is set. Any other refusal fails: Locked
-  /// is 423, and anything else 500, as IS-05 answers a request that meets the schema and the
-  /// constraints but cannot be carried out.
-  @discardableResult
-  func applyEndpointCommand(
-    _ command: OcaMediaStreamEndpointCommand,
-    to endpoint: NMOSOcaEndpoint,
-    toleratingNotImplemented: Bool = false
-  ) async throws -> Bool {
+  /// Applies an ApplyEndpointCommand to the endpoint. A refusal fails: Locked is 423, and
+  /// anything else (NotImplemented included) 500, as IS-05 answers a request that meets the
+  /// schema and the constraints but cannot be carried out.
+  func applyEndpointCommand(_ command: OcaMediaStreamEndpointCommand, to endpoint: NMOSOcaEndpoint) async throws {
     do {
       try await endpoint.application.applyEndpointCommand(
         endpointID: endpoint.endpoint.idInternal,
         command: command,
         from: NMOSOcaControlController.connection
       )
-      return true
-    } catch Ocp1Error.status(.notImplemented) where toleratingNotImplemented {
-      return false
     } catch Ocp1Error.status(.locked) {
       throw NMOSConnectionError(Ocp1Error.status(.locked))
     } catch {
